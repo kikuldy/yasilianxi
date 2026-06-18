@@ -4,42 +4,39 @@ import { ref } from 'vue'
 // ── 表单状态 ──────────────────────────────────────────
 const unitTitle = ref('')
 const partTitle = ref('')
-const questionFile = ref(null)
-const answerFile = ref(null)
-const audioFile = ref(null)
-const scriptFile = ref(null)
 
-const questionImgUrl = ref('')
-const answerImgUrl = ref('')
-const audioSrcUrl = ref('')
-const scriptImgUrl = ref('')
+const files = ref({ question: null, answer: null, audio: null, script: null })
+const urls  = ref({ question: '', answer: '', audio: '', script: '' })
 
 const isUploading = ref(false)
-const isSaving = ref(false)
-const message = ref('')
+const isSaving    = ref(false)
+const message     = ref('')
+const messageOk   = ref(true)
 
-// ── 上传文件到 R2 ─────────────────────────────────────
+function onFileChange(e, key) {
+  files.value[key] = e.target.files[0] ?? null
+}
+
+// ── 上传单个文件到 R2 ─────────────────────────────────
 async function uploadFile(file) {
-  // TODO: 替换为实际的 Cloudflare Worker 上传端点
-  const formData = new FormData()
-  formData.append('file', file)
-  const res = await fetch('/api/upload', { method: 'POST', body: formData })
-  if (!res.ok) throw new Error('上传失败')
-  const data = await res.json()
-  return data.url
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch('/api/upload', { method: 'POST', body: fd })
+  if (!res.ok) throw new Error(`上传失败：${file.name}`)
+  return (await res.json()).url
 }
 
 async function handleUploadAll() {
   isUploading.value = true
   message.value = ''
   try {
-    if (questionFile.value) questionImgUrl.value = await uploadFile(questionFile.value)
-    if (answerFile.value) answerImgUrl.value = await uploadFile(answerFile.value)
-    if (audioFile.value) audioSrcUrl.value = await uploadFile(audioFile.value)
-    if (scriptFile.value) scriptImgUrl.value = await uploadFile(scriptFile.value)
-    message.value = '上传成功'
+    if (files.value.question) urls.value.question = await uploadFile(files.value.question)
+    if (files.value.answer)   urls.value.answer   = await uploadFile(files.value.answer)
+    if (files.value.audio)    urls.value.audio    = await uploadFile(files.value.audio)
+    if (files.value.script)   urls.value.script   = await uploadFile(files.value.script)
+    setMsg('文件上传成功', true)
   } catch (e) {
-    message.value = e.message
+    setMsg(e.message, false)
   } finally {
     isUploading.value = false
   }
@@ -47,44 +44,45 @@ async function handleUploadAll() {
 
 // ── 保存到 KV ─────────────────────────────────────────
 async function handleSave() {
-  if (!unitTitle.value || !partTitle.value || !questionImgUrl.value || !answerImgUrl.value) {
-    message.value = '请先填写 Unit/Part 标题并上传题目和答案图片'
-    return
-  }
+  if (!unitTitle.value || !partTitle.value) return setMsg('请填写 Unit 和 Part 标题', false)
+  if (!urls.value.question || !urls.value.answer) return setMsg('请先上传题目和答案图片', false)
+
   isSaving.value = true
   message.value = ''
   try {
     const exercise = {
-      questionImg: questionImgUrl.value,
-      answerImg: answerImgUrl.value,
-      ...(audioSrcUrl.value && { audioSrc: audioSrcUrl.value }),
-      ...(scriptImgUrl.value && { scriptImg: scriptImgUrl.value }),
+      questionImg: urls.value.question,
+      answerImg:   urls.value.answer,
+      ...(urls.value.audio  && { audioSrc:  urls.value.audio }),
+      ...(urls.value.script && { scriptImg: urls.value.script }),
     }
-    // TODO: 替换为实际的 Cloudflare Worker KV 写入端点
     const res = await fetch('/api/exercise', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ unit: unitTitle.value, part: partTitle.value, exercise }),
     })
     if (!res.ok) throw new Error('保存失败')
-    message.value = '保存并发布成功'
+    setMsg('保存并发布成功', true)
+    files.value = { question: null, answer: null, audio: null, script: null }
+    urls.value  = { question: '', answer: '', audio: '', script: '' }
   } catch (e) {
-    message.value = e.message
+    setMsg(e.message, false)
   } finally {
     isSaving.value = false
   }
 }
 
-function onFileChange(e, target) {
-  target.value = e.target.files[0] ?? null
+function setMsg(text, ok) {
+  message.value = text
+  messageOk.value = ok
 }
 </script>
 
 <template>
-  <div class="max-w-xl mx-auto p-6 space-y-6">
+  <div class="max-w-xl mx-auto p-6 space-y-5">
     <div class="flex items-center justify-between">
-      <h1 class="text-xl font-semibold">后台配置</h1>
-      <a href="#/" class="text-sm text-indigo-400 underline">返回前台</a>
+      <h1 class="text-lg font-semibold">后台配置</h1>
+      <a href="#/" class="text-sm text-indigo-400 hover:underline">返回前台</a>
     </div>
 
     <!-- Unit / Part -->
@@ -92,53 +90,54 @@ function onFileChange(e, target) {
       <input
         v-model="unitTitle"
         placeholder="Unit 标题（如 Unit 1）"
-        class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+        class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
       />
       <input
         v-model="partTitle"
         placeholder="Part 标题（如 Part 1）"
-        class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+        class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
       />
     </div>
 
-    <!-- 文件上传 -->
-    <div class="space-y-3">
-      <label class="block text-sm text-gray-400">
-        题目图片（必填）
-        <input type="file" accept="image/*" class="mt-1 block text-sm" @change="e => onFileChange(e, questionFile)" />
-      </label>
-      <label class="block text-sm text-gray-400">
-        答案图片（必填）
-        <input type="file" accept="image/*" class="mt-1 block text-sm" @change="e => onFileChange(e, answerFile)" />
-      </label>
-      <label class="block text-sm text-gray-400">
-        音频文件（可选）
-        <input type="file" accept="audio/*" class="mt-1 block text-sm" @change="e => onFileChange(e, audioFile)" />
-      </label>
-      <label class="block text-sm text-gray-400">
-        听力原文图片（可选）
-        <input type="file" accept="image/*" class="mt-1 block text-sm" @change="e => onFileChange(e, scriptFile)" />
-      </label>
+    <!-- 文件选择 -->
+    <div class="space-y-4 bg-gray-800/50 rounded-lg p-4">
+      <template v-for="row in [
+        { key: 'question', label: '题目图片（必填）', accept: 'image/*' },
+        { key: 'answer',   label: '答案图片（必填）', accept: 'image/*' },
+        { key: 'audio',    label: '音频文件（可选）',  accept: 'audio/*' },
+        { key: 'script',   label: '听力原文图片（可选）', accept: 'image/*' },
+      ]" :key="row.key">
+        <label class="block text-sm">
+          <span class="text-gray-400">{{ row.label }}</span>
+          <span v-if="urls[row.key]" class="ml-2 text-xs text-green-400">✓ 已上传</span>
+          <input
+            type="file"
+            :accept="row.accept"
+            class="mt-1 block w-full text-xs text-gray-400
+              file:mr-3 file:py-1 file:px-2 file:rounded file:border-0
+              file:text-xs file:bg-gray-700 file:text-gray-200 file:cursor-pointer"
+            @change="onFileChange($event, row.key)"
+          />
+        </label>
+      </template>
     </div>
 
     <button
-      class="w-full bg-gray-700 hover:bg-gray-600 rounded py-2 text-sm disabled:opacity-50"
+      class="w-full bg-gray-700 hover:bg-gray-600 rounded py-2 text-sm disabled:opacity-40 transition-colors"
       :disabled="isUploading"
       @click="handleUploadAll"
-    >
-      {{ isUploading ? '上传中...' : '上传文件到 R2' }}
-    </button>
+    >{{ isUploading ? '上传中…' : '① 上传文件到 R2' }}</button>
 
     <button
-      class="w-full bg-indigo-600 hover:bg-indigo-500 rounded py-2 text-sm disabled:opacity-50"
+      class="w-full bg-indigo-600 hover:bg-indigo-500 rounded py-2 text-sm disabled:opacity-40 transition-colors"
       :disabled="isSaving"
       @click="handleSave"
-    >
-      {{ isSaving ? '保存中...' : '保存并发布' }}
-    </button>
+    >{{ isSaving ? '保存中…' : '② 保存并发布' }}</button>
 
-    <p v-if="message" class="text-sm text-center" :class="message.includes('成功') ? 'text-green-400' : 'text-red-400'">
-      {{ message }}
-    </p>
+    <p
+      v-if="message"
+      class="text-sm text-center"
+      :class="messageOk ? 'text-green-400' : 'text-red-400'"
+    >{{ message }}</p>
   </div>
 </template>

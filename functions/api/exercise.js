@@ -31,12 +31,29 @@ export async function onRequestDelete({ request, env }) {
   const data = await readData(env)
   const partObj = getPart(data, unit, part)
   if (!partObj || !partObj.exercises[exerciseIndex]) return json({ error: '未找到目标练习' }, 404)
+
+  const ex = partObj.exercises[exerciseIndex]
   partObj.exercises.splice(exerciseIndex, 1)
   await env.KV.put('data', JSON.stringify(data))
+
+  // 同步删除 R2 文件（失败不阻断主流程）
+  const r2Keys = [
+    ...toArray(ex.questionImg),
+    ...toArray(ex.answerImg),
+    ...toArray(ex.scriptImg),
+    ...(ex.audioSrc ? [ex.audioSrc] : []),
+  ].map(urlToKey).filter(Boolean)
+
+  await Promise.allSettled(r2Keys.map(key => env.R2.delete(key)))
+
   return json({ ok: true })
 }
 
 // ── 工具函数 ──────────────────────────────────────────
+const R2_PUBLIC_URL = 'https://pub-c831ae0203194c9e8699d248a844023c.r2.dev/'
+
+function toArray(v) { if (!v) return []; return Array.isArray(v) ? v : [v] }
+function urlToKey(url) { return typeof url === 'string' ? url.replace(R2_PUBLIC_URL, '') : null }
 async function readData(env) {
   const raw = await env.KV.get('data')
   return raw ? JSON.parse(raw) : { units: [] }

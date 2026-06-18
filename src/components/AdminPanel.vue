@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 // ── 预置选项 ──────────────────────────────────────────
 const UNITS = Array.from({ length: 12 }, (_, i) => `Unit ${i + 1}`)
@@ -18,8 +18,15 @@ const isSaving    = ref(false)
 const message     = ref('')
 const messageOk   = ref(true)
 
+const dragging = ref(null)  // 当前正在拖入的 key
+
 function onFileChange(e, key) {
   files.value[key] = e.target.files[0] ?? null
+}
+function onDrop(e, key) {
+  dragging.value = null
+  const file = e.dataTransfer?.files[0]
+  if (file) files.value[key] = file
 }
 
 // ── 上传单个文件到 R2 ─────────────────────────────────
@@ -120,23 +127,42 @@ function setMsg(text, ok) {
       />
     </div>
 
-    <!-- 文件选择 -->
-    <div class="space-y-4 bg-gray-800/50 rounded-lg p-4">
+    <!-- 文件选择（支持拖拽） -->
+    <div class="space-y-3">
       <template v-for="row in [
         { key: 'question', label: '题目图片（必填）',     accept: 'image/*' },
         { key: 'answer',   label: '答案图片（必填）',     accept: 'image/*' },
         { key: 'audio',    label: '音频文件（可选）',     accept: 'audio/*' },
         { key: 'script',   label: '听力原文图片（可选）', accept: 'image/*' },
       ]" :key="row.key">
-        <label class="block text-sm">
-          <span class="text-gray-400">{{ row.label }}</span>
-          <span v-if="urls[row.key]" class="ml-2 text-xs text-green-400">✓ 已上传</span>
+        <label
+          class="relative flex items-center gap-3 rounded-lg border-2 border-dashed px-4 py-3 cursor-pointer transition-colors"
+          :class="dragging === row.key
+            ? 'border-indigo-400 bg-indigo-500/10'
+            : urls[row.key]
+              ? 'border-green-600 bg-green-500/5'
+              : 'border-gray-700 bg-gray-800/50 hover:border-gray-500'"
+          @dragover.prevent="dragging = row.key"
+          @dragleave="dragging = null"
+          @drop.prevent="onDrop($event, row.key)"
+        >
+          <!-- 图标 -->
+          <span class="text-xl shrink-0">
+            {{ urls[row.key] ? '✅' : dragging === row.key ? '📂' : '📎' }}
+          </span>
+
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-gray-300">{{ row.label }}</p>
+            <p class="text-xs truncate mt-0.5"
+               :class="urls[row.key] ? 'text-green-400' : 'text-gray-500'">
+              {{ files[row.key]?.name ?? (urls[row.key] ? '已上传' : '拖拽或点击选择文件') }}
+            </p>
+          </div>
+
           <input
             type="file"
             :accept="row.accept"
-            class="mt-1 block w-full text-xs text-gray-400
-              file:mr-3 file:py-1 file:px-2 file:rounded file:border-0
-              file:text-xs file:bg-gray-700 file:text-gray-200 file:cursor-pointer"
+            class="absolute inset-0 opacity-0 cursor-pointer"
             @change="onFileChange($event, row.key)"
           />
         </label>

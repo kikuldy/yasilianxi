@@ -1,10 +1,14 @@
 <script setup>
 import { ref } from 'vue'
 
+// ── 预置选项 ──────────────────────────────────────────
+const UNITS = Array.from({ length: 12 }, (_, i) => `Unit ${i + 1}`)
+const PARTS = ['Part 1', 'Part 2', 'Part 3', 'Part 4']
+
 // ── 表单状态 ──────────────────────────────────────────
-const unitTitle      = ref('')
-const partTitle      = ref('')
-const exerciseTitle  = ref('')
+const unitTitle     = ref('Unit 1')
+const partTitle     = ref('Part 1')
+const exerciseTitle = ref('')
 
 const files = ref({ question: null, answer: null, audio: null, script: null })
 const urls  = ref({ question: '', answer: '', audio: '', script: '' })
@@ -45,7 +49,7 @@ async function handleUploadAll() {
 
 // ── 保存到 KV ─────────────────────────────────────────
 async function handleSave() {
-  if (!unitTitle.value || !partTitle.value || !exerciseTitle.value) return setMsg('请填写 Unit、Part 和 Exercise 标题', false)
+  if (!exerciseTitle.value) return setMsg('请填写 Exercise 标题', false)
   if (!urls.value.question || !urls.value.answer) return setMsg('请先上传题目和答案图片', false)
 
   isSaving.value = true
@@ -64,7 +68,7 @@ async function handleSave() {
       body: JSON.stringify({ unit: unitTitle.value, part: partTitle.value, exercise }),
     })
     if (!res.ok) throw new Error('保存失败')
-    setMsg('保存并发布成功', true)
+    setMsg(`已发布：${unitTitle.value} › ${partTitle.value} › ${exerciseTitle.value}`, true)
     exerciseTitle.value = ''
     files.value = { question: null, answer: null, audio: null, script: null }
     urls.value  = { question: '', answer: '', audio: '', script: '' }
@@ -88,18 +92,27 @@ function setMsg(text, ok) {
       <a href="#/" class="text-sm text-indigo-400 hover:underline">返回前台</a>
     </div>
 
-    <!-- Unit / Part -->
+    <!-- Unit / Part / Exercise -->
     <div class="space-y-3">
-      <input
-        v-model="unitTitle"
-        placeholder="Unit 标题（如 Unit 1）"
-        class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
-      />
-      <input
-        v-model="partTitle"
-        placeholder="Part 标题（如 Part 1）"
-        class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
-      />
+      <!-- Unit 下拉 -->
+      <div class="flex gap-3">
+        <select
+          v-model="unitTitle"
+          class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
+        >
+          <option v-for="u in UNITS" :key="u" :value="u">{{ u }}</option>
+        </select>
+
+        <!-- Part 下拉 -->
+        <select
+          v-model="partTitle"
+          class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
+        >
+          <option v-for="p in PARTS" :key="p" :value="p">{{ p }}</option>
+        </select>
+      </div>
+
+      <!-- Exercise 标题（手动输入） -->
       <input
         v-model="exerciseTitle"
         placeholder="Exercise 标题（如 Exercise 1 — Questions 1-10）"
@@ -110,9 +123,9 @@ function setMsg(text, ok) {
     <!-- 文件选择 -->
     <div class="space-y-4 bg-gray-800/50 rounded-lg p-4">
       <template v-for="row in [
-        { key: 'question', label: '题目图片（必填）', accept: 'image/*' },
-        { key: 'answer',   label: '答案图片（必填）', accept: 'image/*' },
-        { key: 'audio',    label: '音频文件（可选）',  accept: 'audio/*' },
+        { key: 'question', label: '题目图片（必填）',     accept: 'image/*' },
+        { key: 'answer',   label: '答案图片（必填）',     accept: 'image/*' },
+        { key: 'audio',    label: '音频文件（可选）',     accept: 'audio/*' },
         { key: 'script',   label: '听力原文图片（可选）', accept: 'image/*' },
       ]" :key="row.key">
         <label class="block text-sm">

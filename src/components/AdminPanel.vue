@@ -2,8 +2,9 @@
 import { ref } from 'vue'
 
 // ── 表单状态 ──────────────────────────────────────────
-const unitTitle = ref('')
-const partTitle = ref('')
+const unitTitle      = ref('')
+const partTitle      = ref('')
+const exerciseTitle  = ref('')
 
 const files = ref({ question: null, answer: null, audio: null, script: null })
 const urls  = ref({ question: '', answer: '', audio: '', script: '' })
@@ -44,13 +45,14 @@ async function handleUploadAll() {
 
 // ── 保存到 KV ─────────────────────────────────────────
 async function handleSave() {
-  if (!unitTitle.value || !partTitle.value) return setMsg('请填写 Unit 和 Part 标题', false)
+  if (!unitTitle.value || !partTitle.value || !exerciseTitle.value) return setMsg('请填写 Unit、Part 和 Exercise 标题', false)
   if (!urls.value.question || !urls.value.answer) return setMsg('请先上传题目和答案图片', false)
 
   isSaving.value = true
   message.value = ''
   try {
     const exercise = {
+      title:       exerciseTitle.value,
       questionImg: urls.value.question,
       answerImg:   urls.value.answer,
       ...(urls.value.audio  && { audioSrc:  urls.value.audio }),
@@ -63,6 +65,7 @@ async function handleSave() {
     })
     if (!res.ok) throw new Error('保存失败')
     setMsg('保存并发布成功', true)
+    exerciseTitle.value = ''
     files.value = { question: null, answer: null, audio: null, script: null }
     urls.value  = { question: '', answer: '', audio: '', script: '' }
   } catch (e) {
@@ -95,6 +98,11 @@ function setMsg(text, ok) {
       <input
         v-model="partTitle"
         placeholder="Part 标题（如 Part 1）"
+        class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
+      />
+      <input
+        v-model="exerciseTitle"
+        placeholder="Exercise 标题（如 Exercise 1 — Questions 1-10）"
         class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
       />
     </div>

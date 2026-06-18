@@ -106,8 +106,8 @@ function prevExercise() {
     <!-- 顶栏 -->
     <div class="flex items-center justify-between text-sm text-gray-500">
       <span v-if="currentExercise">
-        {{ currentExercise._unit }} · {{ currentExercise._part }} ·
-        第 {{ exerciseIndex + 1 }} / {{ exerciseList.length }} 题
+        {{ currentExercise._unit }} · {{ currentExercise._part }} · {{ currentExercise.title }}
+        <span class="text-gray-600 ml-2">（{{ exerciseIndex + 1 }} / {{ exerciseList.length }}）</span>
       </span>
       <a href="#/admin" class="text-indigo-400 hover:underline ml-auto">后台</a>
     </div>

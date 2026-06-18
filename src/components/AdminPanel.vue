@@ -1,9 +1,10 @@
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 
 // ── 预置选项 ──────────────────────────────────────────
-const UNITS = Array.from({ length: 12 }, (_, i) => `Unit ${i + 1}`)
-const PARTS = ['Part 1', 'Part 2', 'Part 3', 'Part 4']
+const UNITS     = Array.from({ length: 12 }, (_, i) => `Unit ${i + 1}`)
+const PARTS     = ['Part 1', 'Part 2', 'Part 3', 'Part 4']
+const EXERCISES = Array.from({ length: 10 }, (_, i) => `Exercise ${i + 1}`)
 
 // ── 内容树数据 ────────────────────────────────────────
 const allData     = ref({ units: [] })
@@ -25,34 +26,46 @@ function toggleExpand(k) { expanded.value[k] = !expanded.value[k] }
 function toArray(v) { if (!v) return []; return Array.isArray(v) ? v : [v] }
 
 // ── 表单状态 ──────────────────────────────────────────
-const unitTitle     = ref('Unit 1')
-const partTitle     = ref('Part 1')
-const exerciseTitle = ref('')
-const dragging      = ref(null)
+const unitNum   = ref('Unit 1');    const unitDesc   = ref('')
+const partNum   = ref('Part 1');    const partDesc   = ref('')
+const exNum     = ref('Exercise 1');const exDesc     = ref('')
+
+// 组合标题
+const exerciseTitle = computed(() =>
+  exDesc.value.trim() ? `${exNum.value} — ${exDesc.value.trim()}` : exNum.value
+)
+
+const dragging = ref(null)
 const files = ref({ question: [], answer: [], audio: null, script: [] })
 const urls  = ref({ question: [], answer: [], audio: '',   script: [] })
 
 const editingKey = reactive({ unit: null, part: null, index: null })
-const isEditing  = ref(false)   // false = 新增，true = 编辑
+const isEditing  = ref(false)
 
 function startNew() {
-  isEditing.value       = false
+  isEditing.value = false
   editingKey.unit = editingKey.part = editingKey.index = null
-  exerciseTitle.value   = ''
+  unitDesc.value = partDesc.value = exDesc.value = ''
+  exNum.value = 'Exercise 1'
   files.value = { question: [], answer: [], audio: null, script: [] }
   urls.value  = { question: [], answer: [], audio: '',   script: [] }
 }
 
 function startEdit(unit, part, index, ex) {
-  isEditing.value     = true
-  unitTitle.value     = unit
-  partTitle.value     = part
-  exerciseTitle.value = ex.title ?? ''
+  isEditing.value = true
+  // 拆解 unit/part 数字和描述（格式："Unit 1" 或 "Unit 1 · Cambridge 16"）
+  const [un, ...ud] = unit.split(' · ');  unitNum.value = un;   unitDesc.value = ud.join(' · ')
+  const [pn, ...pd] = part.split(' · ');  partNum.value = pn;   partDesc.value = pd.join(' · ')
+  // 拆解 exercise title（格式："Exercise 1 — Questions 1-10" 或 "Exercise 1"）
+  const [en, ...ed] = (ex.title ?? '').split(' — ')
+  exNum.value  = EXERCISES.includes(en) ? en : 'Exercise 1'
+  exDesc.value = ed.join(' — ')
+
   files.value = { question: [], answer: [], audio: null, script: [] }
   urls.value  = {
     question: toArray(ex.questionImg),
     answer:   toArray(ex.answerImg),
-    audio:    ex.audioSrc  ?? '',
+    audio:    ex.audioSrc ?? '',
     script:   toArray(ex.scriptImg),
   }
   editingKey.unit  = unit
@@ -120,9 +133,12 @@ async function handleUploadAll() {
 
 // ── 保存 ──────────────────────────────────────────────
 async function handleSave() {
-  if (!exerciseTitle.value) return setMsg('请填写 Exercise 标题', false)
   if (!urls.value.question.length || !urls.value.answer.length)
     return setMsg('请先上传题目和答案图片', false)
+
+  // 组合 unit/part 完整标题（含描述）
+  const fullUnit = unitDesc.value.trim() ? `${unitNum.value} · ${unitDesc.value.trim()}` : unitNum.value
+  const fullPart = partDesc.value.trim() ? `${partNum.value} · ${partDesc.value.trim()}` : partNum.value
 
   isSaving.value = true; message.value = ''
   try {
@@ -138,13 +154,13 @@ async function handleSave() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(isEditing.value
         ? { unit: editingKey.unit, part: editingKey.part, exerciseIndex: editingKey.index, exercise }
-        : { unit: unitTitle.value, part: partTitle.value, exercise }),
+        : { unit: fullUnit, part: fullPart, exercise }),
     })
     if (!res.ok) throw new Error('保存失败')
-    setMsg(isEditing.value ? '更新成功' : `已发布：${unitTitle.value} › ${partTitle.value} › ${exerciseTitle.value}`, true)
+    setMsg(isEditing.value ? '更新成功' : `已发布：${fullUnit} › ${fullPart} › ${exerciseTitle.value}`, true)
     loadAll()
     if (!isEditing.value) {
-      exerciseTitle.value = ''
+      exDesc.value = ''
       files.value = { question: [], answer: [], audio: null, script: [] }
       urls.value  = { question: [], answer: [], audio: '',   script: [] }
     }
@@ -194,38 +210,29 @@ function dropTextColor(key) {
     <aside class="w-72 flex-shrink-0 flex flex-col bg-gray-900 border-r border-gray-700 overflow-hidden">
       <div class="px-4 py-3 border-b border-gray-700 flex items-center justify-between shrink-0">
         <span class="text-sm font-medium text-gray-200">已有内容</span>
-        <button
-          class="text-xs px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+        <button class="text-xs px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
           @click="startNew">+ 新增</button>
       </div>
-
       <div class="overflow-y-auto flex-1 py-2">
         <div v-if="loadingData" class="px-4 py-6 text-xs text-gray-400">加载中…</div>
         <div v-else-if="!allData.units.length" class="px-4 py-6 text-xs text-gray-400">暂无内容</div>
-
         <div v-for="unit in allData.units" :key="unit.title">
           <div v-for="part in unit.parts" :key="part.title" class="mb-1">
-            <!-- Part 折叠头 -->
             <button
               class="w-full flex items-center justify-between px-4 py-2 text-xs font-semibold text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
-              @click="toggleExpand(unit.title + part.title)"
-            >
-              <span>{{ unit.title }} › {{ part.title }}</span>
-              <span class="flex items-center gap-1.5 text-gray-500">
+              @click="toggleExpand(unit.title + part.title)">
+              <span class="truncate">{{ unit.title }} › {{ part.title }}</span>
+              <span class="flex items-center gap-1.5 text-gray-500 shrink-0 ml-2">
                 <span>{{ part.exercises.length }}条</span>
                 <span>{{ expanded[unit.title + part.title] ? '▲' : '▼' }}</span>
               </span>
             </button>
-
-            <!-- Exercise 列表 -->
             <div v-if="expanded[unit.title + part.title]">
-              <div
-                v-for="(ex, idx) in part.exercises" :key="idx"
-                class="flex items-center gap-2 pl-5 pr-3 py-1.5 border-l-2 transition-colors"
-                :class="editingKey.unit === unit.title && editingKey.part === part.title && editingKey.index === idx
-                  ? 'border-indigo-500 bg-indigo-600/20'
-                  : 'border-transparent hover:bg-gray-800'"
-              >
+              <div v-for="(ex, idx) in part.exercises" :key="idx"
+                   class="flex items-center gap-2 pl-5 pr-3 py-1.5 border-l-2 transition-colors"
+                   :class="editingKey.unit === unit.title && editingKey.part === part.title && editingKey.index === idx
+                     ? 'border-indigo-500 bg-indigo-600/20'
+                     : 'border-transparent hover:bg-gray-800'">
                 <span class="flex-1 min-w-0 text-xs text-gray-300 truncate">{{ ex.title || '（无标题）' }}</span>
                 <span class="text-xs text-gray-600 shrink-0">
                   {{ toArray(ex.questionImg).length }}+{{ toArray(ex.answerImg).length }}
@@ -245,7 +252,6 @@ function dropTextColor(key) {
     <!-- ── 右侧：表单 ── -->
     <main class="flex-1 overflow-y-auto bg-gray-950">
       <div class="max-w-xl mx-auto p-6 space-y-5">
-        <!-- 顶栏 -->
         <div class="flex items-center justify-between">
           <h1 class="text-lg font-semibold">
             {{ isEditing ? `编辑：${editingKey.unit} › ${editingKey.part}` : '新增内容' }}
@@ -253,28 +259,46 @@ function dropTextColor(key) {
           <a href="#/" class="text-sm text-indigo-400 hover:underline">返回前台</a>
         </div>
 
-        <!-- 编辑模式提示 -->
+        <!-- 编辑提示 -->
         <div v-if="isEditing"
              class="flex items-center justify-between bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-2 text-sm">
           <span class="text-yellow-300">编辑模式</span>
           <button class="text-gray-400 hover:text-white text-xs" @click="startNew">取消，切换为新增</button>
         </div>
 
-        <!-- Unit / Part -->
-        <div class="flex gap-3">
-          <select v-model="unitTitle" :disabled="isEditing"
-            class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50">
+        <!-- Unit -->
+        <div class="flex gap-2">
+          <select v-model="unitNum" :disabled="isEditing"
+            class="w-32 shrink-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50">
             <option v-for="u in UNITS" :key="u" :value="u">{{ u }}</option>
           </select>
-          <select v-model="partTitle" :disabled="isEditing"
-            class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50">
-            <option v-for="p in PARTS" :key="p" :value="p">{{ p }}</option>
-          </select>
+          <input v-model="unitDesc" :disabled="isEditing" placeholder="Unit 描述（如 Cambridge 16）"
+            class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
         </div>
 
-        <!-- Exercise 标题 -->
-        <input v-model="exerciseTitle" placeholder="Exercise 标题（如 Exercise 1 — Questions 1-10）"
-          class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" />
+        <!-- Part -->
+        <div class="flex gap-2">
+          <select v-model="partNum" :disabled="isEditing"
+            class="w-32 shrink-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50">
+            <option v-for="p in PARTS" :key="p" :value="p">{{ p }}</option>
+          </select>
+          <input v-model="partDesc" :disabled="isEditing" placeholder="Part 描述（如 Listening Test 1）"
+            class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
+        </div>
+
+        <!-- Exercise -->
+        <div class="flex gap-2">
+          <select v-model="exNum"
+            class="w-32 shrink-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+            <option v-for="e in EXERCISES" :key="e" :value="e">{{ e }}</option>
+          </select>
+          <input v-model="exDesc" placeholder="题目范围（如 Questions 1-10）"
+            class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" />
+        </div>
+        <!-- 预览标题 -->
+        <p class="text-xs text-gray-500 -mt-3 pl-1">
+          标题预览：<span class="text-gray-300">{{ exerciseTitle }}</span>
+        </p>
 
         <!-- Drop Zones -->
         <div class="space-y-3">
@@ -284,13 +308,11 @@ function dropTextColor(key) {
             { key: 'audio',    label: '音频文件（可选）',             accept: 'audio/*', multi: false },
             { key: 'script',   label: '听力原文图片（可选，可多张）', accept: 'image/*', multi: true  },
           ]" :key="row.key">
-            <label
-              class="relative flex items-center gap-3 rounded-lg border-2 border-dashed px-4 py-3 cursor-pointer transition-colors"
+            <label class="relative flex items-center gap-3 rounded-lg border-2 border-dashed px-4 py-3 cursor-pointer transition-colors"
               :class="dropBorder(row.key)"
               @dragover.prevent="dragging = row.key"
               @dragleave="dragging = null"
-              @drop.prevent="onDrop($event, row.key)"
-            >
+              @drop.prevent="onDrop($event, row.key)">
               <span class="text-xl shrink-0">{{ dropIcon(row.key) }}</span>
               <div class="flex-1 min-w-0">
                 <p class="text-sm text-gray-300">{{ row.label }}</p>

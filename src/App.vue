@@ -11,7 +11,7 @@ window.addEventListener('hashchange', () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-950 text-gray-100">
+  <div class="h-screen bg-gray-950 text-gray-100">
     <AdminPanel v-if="isAdmin" />
     <UserDashboard v-else />
   </div>

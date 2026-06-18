@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 项目概述
 轻量级雅思听力备考与做题工具。解决在 PDF 题目、答案、原文、音频之间多窗口切换繁琐的痛点，通过单页集成界面实现"边看、边听、边做题"。
 
-- **技术栈：** Vue 3 (Vite) + Tailwind CSS + Cloudflare Pages / KV / R2
+- **技术栈：** Vue 3 (Vite) + Tailwind CSS v4 + Cloudflare Pages / KV / R2
 - **数据层级：** Unit（单元）→ Part（部分）→ Exercise（练习），完全由 Cloudflare KV 数据驱动
 - **核心理念：** 纯图片 + 音频流。题目、答案、原文均为从 PDF 截取的图片，由 R2 托管；无需录入文本
 
@@ -22,7 +22,8 @@ npm run lint     # 代码规范检查
 
 - **组合式 API：** 严格使用 `<script setup>` 语法，不使用 Options API
 - **样式：** 100% Tailwind CSS 原子类；仅在自定义滚动条等极特殊场景才写原生 CSS
-- **模块边界：** 前台做题界面（User Dashboard）与后台配置面板（Admin Panel）必须明确分离
+- **模块边界：** 前台做题界面（`UserDashboard.vue`）与后台配置面板（`AdminPanel.vue`）明确分离
+- **路由：** 通过 URL hash 简单路由：`#/admin` 进后台，其余默认前台（`App.vue`）
 - **语言：** 所有代码注释、UI 文本、Commit Message 全部使用简体中文
 
 ## KV 数据结构约定
@@ -33,12 +34,14 @@ Exercise JSON 字段：
 
 ```json
 {
-  "questionImg": "https://...",   // 必填：题目图片（R2 公共 URL）
-  "answerImg":   "https://...",   // 必填：答案图片
-  "audioSrc":    "https://...",   // 可选：音频文件；缺失时隐藏播放器
-  "scriptImg":   "https://..."    // 可选：听力原文图片；缺失时隐藏原文按钮
+  "questionImg": "https://...",
+  "answerImg":   "https://...",
+  "audioSrc":    "https://...",
+  "scriptImg":   "https://..."
 }
 ```
+
+`audioSrc` 和 `scriptImg` 为可选字段，缺失时对应 UI 元素完全不渲染。
 
 ## 核心业务逻辑
 
@@ -56,8 +59,8 @@ Exercise JSON 字段：
 ### 后台配置流
 
 1. 表单选择 Unit / Part 层级
-2. 文件上传 → 直接推送 Cloudflare R2 → 取回公共 URL
-3. 点击【保存并发布】→ 将 Exercise JSON 整块写入 Cloudflare KV
+2. 文件上传 → 直接推送 Cloudflare R2 → 取回公共 URL（`/api/upload`）
+3. 点击【保存并发布】→ 将 Exercise JSON 整块写入 Cloudflare KV（`/api/exercise`）
 
 ### 条件渲染规则
 

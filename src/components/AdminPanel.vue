@@ -9,7 +9,6 @@ const EXERCISES = Array.from({ length: 10 }, (_, i) => `Exercise ${i + 1}`)
 // ── 内容树数据 ────────────────────────────────────────
 const allData     = ref({ units: [] })
 const loadingData = ref(false)
-const expanded    = ref({})
 
 async function loadAll() {
   loadingData.value = true
@@ -22,7 +21,7 @@ async function loadAll() {
 }
 onMounted(loadAll)
 
-function toggleExpand(k) { expanded.value[k] = !expanded.value[k] }
+
 function toArray(v) { if (!v) return []; return Array.isArray(v) ? v : [v] }
 
 // ── 已有描述候选（用于 datalist） ────────────────────
@@ -250,43 +249,37 @@ function dropTextColor(key) {
         <button class="text-xs px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
           @click="startNew">+ 新增</button>
       </div>
-      <div class="overflow-y-auto flex-1 py-2">
+      <div class="overflow-y-auto overflow-x-hidden flex-1 py-2">
         <div v-if="loadingData" class="px-4 py-6 text-xs text-gray-400">加载中…</div>
         <div v-else-if="!allData.units.length" class="px-4 py-6 text-xs text-gray-400">暂无内容</div>
         <div v-for="unit in allData.units" :key="unit.title">
-          <div v-for="part in unit.parts" :key="part.title" class="mb-1">
-            <div class="flex items-center hover:bg-gray-800 transition-colors">
+          <div v-for="part in unit.parts" :key="part.title" class="mb-2">
+            <!-- Part 标题行 -->
+            <div class="flex items-center px-3 py-1.5 gap-1">
+              <span class="flex-1 min-w-0 text-xs font-semibold text-gray-400 truncate">
+                {{ unit.title }} › {{ part.title }}
+              </span>
               <button
-                class="flex-1 flex items-center justify-between px-4 py-2 text-xs font-semibold text-gray-300 hover:text-white"
-                @click="toggleExpand(unit.title + part.title)">
-                <span class="truncate">{{ unit.title }} › {{ part.title }}</span>
-                <span class="flex items-center gap-1.5 text-gray-500 shrink-0 ml-2">
-                  <span>{{ part.exercises.length }}条</span>
-                  <span>{{ expanded[unit.title + part.title] ? '▲' : '▼' }}</span>
-                </span>
-              </button>
-              <button
-                class="px-2 py-2 text-xs text-red-500 hover:text-red-400 shrink-0"
+                class="text-xs text-red-500 hover:text-red-400 shrink-0 px-1"
                 title="删除此分组"
-                @click.stop="deletePart(unit.title, part.title, part.exercises.length)"
+                @click="deletePart(unit.title, part.title, part.exercises.length)"
               >删</button>
             </div>
-            <div v-if="expanded[unit.title + part.title]">
-              <div v-for="(ex, idx) in part.exercises" :key="idx"
-                   class="flex items-center gap-2 pl-5 pr-3 py-1.5 border-l-2 transition-colors"
-                   :class="editingKey.unit === unit.title && editingKey.part === part.title && editingKey.index === idx
-                     ? 'border-indigo-500 bg-indigo-600/20'
-                     : 'border-transparent hover:bg-gray-800'">
-                <span class="flex-1 min-w-0 text-xs text-gray-300 truncate">{{ ex.title || '（无标题）' }}</span>
-                <span class="text-xs text-gray-600 shrink-0">
-                  {{ toArray(ex.questionImg).length }}+{{ toArray(ex.answerImg).length }}
-                  <span v-if="ex.audioSrc"> 🔊</span>
-                </span>
-                <button class="text-xs text-indigo-400 hover:text-indigo-300 shrink-0"
-                  @click="startEdit(unit.title, part.title, idx, ex)">编辑</button>
-                <button class="text-xs text-red-500 hover:text-red-400 shrink-0"
-                  @click="deleteExercise(unit.title, part.title, idx, ex.title)">删</button>
-              </div>
+            <!-- Exercise 列表（始终展开） -->
+            <div v-for="(ex, idx) in part.exercises" :key="idx"
+                 class="flex items-center gap-2 pl-4 pr-3 py-1.5 border-l-2 transition-colors mx-1 rounded-r"
+                 :class="editingKey.unit === unit.title && editingKey.part === part.title && editingKey.index === idx
+                   ? 'border-indigo-500 bg-indigo-600/20'
+                   : 'border-transparent hover:bg-gray-800'">
+              <span class="flex-1 min-w-0 text-xs text-gray-300 truncate">{{ ex.title || '（无标题）' }}</span>
+              <span class="text-xs text-gray-600 shrink-0">
+                {{ toArray(ex.questionImg).length }}+{{ toArray(ex.answerImg).length }}
+                <span v-if="ex.audioSrc">🔊</span>
+              </span>
+              <button class="text-xs text-indigo-400 hover:text-indigo-300 shrink-0"
+                @click="startEdit(unit.title, part.title, idx, ex)">编辑</button>
+              <button class="text-xs text-red-500 hover:text-red-400 shrink-0"
+                @click="deleteExercise(unit.title, part.title, idx, ex.title)">删</button>
             </div>
           </div>
         </div>

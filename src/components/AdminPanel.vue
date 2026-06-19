@@ -73,7 +73,22 @@ function startEdit(unit, part, index, ex) {
   editingKey.index = index
 }
 
-// ── 删除 ──────────────────────────────────────────────
+// ── 删除 Part ─────────────────────────────────────────
+async function deletePart(unit, part, count) {
+  const msg = count > 0
+    ? `确认删除「${unit} › ${part}」及其下 ${count} 条练习？R2 文件也会一并删除。`
+    : `确认删除空分组「${unit} › ${part}」？`
+  if (!confirm(msg)) return
+  const res = await fetch('/api/part', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ unit, part }),
+  })
+  if (res.ok) { loadAll(); startNew() }
+  else alert('删除失败')
+}
+
+// ── 删除 Exercise ─────────────────────────────────────
 async function deleteExercise(unit, part, index, title) {
   if (!confirm(`确认删除「${title}」？`)) return
   const res = await fetch('/api/exercise', {
@@ -218,15 +233,22 @@ function dropTextColor(key) {
         <div v-else-if="!allData.units.length" class="px-4 py-6 text-xs text-gray-400">暂无内容</div>
         <div v-for="unit in allData.units" :key="unit.title">
           <div v-for="part in unit.parts" :key="part.title" class="mb-1">
-            <button
-              class="w-full flex items-center justify-between px-4 py-2 text-xs font-semibold text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
-              @click="toggleExpand(unit.title + part.title)">
-              <span class="truncate">{{ unit.title }} › {{ part.title }}</span>
-              <span class="flex items-center gap-1.5 text-gray-500 shrink-0 ml-2">
-                <span>{{ part.exercises.length }}条</span>
-                <span>{{ expanded[unit.title + part.title] ? '▲' : '▼' }}</span>
-              </span>
-            </button>
+            <div class="flex items-center hover:bg-gray-800 transition-colors">
+              <button
+                class="flex-1 flex items-center justify-between px-4 py-2 text-xs font-semibold text-gray-300 hover:text-white"
+                @click="toggleExpand(unit.title + part.title)">
+                <span class="truncate">{{ unit.title }} › {{ part.title }}</span>
+                <span class="flex items-center gap-1.5 text-gray-500 shrink-0 ml-2">
+                  <span>{{ part.exercises.length }}条</span>
+                  <span>{{ expanded[unit.title + part.title] ? '▲' : '▼' }}</span>
+                </span>
+              </button>
+              <button
+                class="px-2 py-2 text-xs text-red-500 hover:text-red-400 shrink-0"
+                title="删除此分组"
+                @click.stop="deletePart(unit.title, part.title, part.exercises.length)"
+              >删</button>
+            </div>
             <div v-if="expanded[unit.title + part.title]">
               <div v-for="(ex, idx) in part.exercises" :key="idx"
                    class="flex items-center gap-2 pl-5 pr-3 py-1.5 border-l-2 transition-colors"

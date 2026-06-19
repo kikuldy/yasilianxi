@@ -243,7 +243,7 @@ function dropTextColor(key) {
   <div class="flex h-screen overflow-hidden">
 
     <!-- ── 左侧：内容树 ── -->
-    <aside class="w-72 flex-shrink-0 flex flex-col bg-gray-900 border-r border-gray-700 overflow-hidden">
+    <aside class="flex-shrink-0 flex flex-col bg-gray-900 border-r border-gray-700 overflow-hidden w-auto min-w-48">
       <div class="px-4 py-3 border-b border-gray-700 flex items-center justify-between shrink-0">
         <span class="text-sm font-medium text-gray-200">已有内容</span>
         <button class="text-xs px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
@@ -256,7 +256,7 @@ function dropTextColor(key) {
           <div v-for="part in unit.parts" :key="part.title" class="mb-2">
             <!-- Part 标题行 -->
             <div class="flex items-center px-3 py-1.5 gap-1">
-              <span class="flex-1 min-w-0 text-xs font-semibold text-gray-400 truncate">
+              <span class="text-xs font-semibold text-gray-400 whitespace-nowrap">
                 {{ unit.title }} › {{ part.title }}
               </span>
               <button
@@ -271,7 +271,7 @@ function dropTextColor(key) {
                  :class="editingKey.unit === unit.title && editingKey.part === part.title && editingKey.index === idx
                    ? 'border-indigo-500 bg-indigo-600/20'
                    : 'border-transparent hover:bg-gray-800'">
-              <span class="flex-1 min-w-0 text-xs text-gray-300 truncate">{{ ex.title || '（无标题）' }}</span>
+              <span class="text-xs text-gray-300 whitespace-nowrap pr-2">{{ ex.title || '（无标题）' }}</span>
               <span class="text-xs text-gray-600 shrink-0">
                 {{ toArray(ex.questionImg).length }}+{{ toArray(ex.answerImg).length }}
                 <span v-if="ex.audioSrc">🔊</span>

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watchEffect } from 'vue'
 
 // ── 预置选项 ──────────────────────────────────────────
 const UNITS     = Array.from({ length: 12 }, (_, i) => `Unit ${i + 1}`)
@@ -24,6 +24,35 @@ onMounted(loadAll)
 
 function toggleExpand(k) { expanded.value[k] = !expanded.value[k] }
 function toArray(v) { if (!v) return []; return Array.isArray(v) ? v : [v] }
+
+// ── 已有描述候选（用于 datalist） ────────────────────
+// 从 KV 数据中提取 unit/part 标题里 " · " 后面的描述部分
+const unitDescOptions = computed(() => {
+  const set = new Set()
+  for (const u of allData.value.units ?? []) {
+    const desc = u.title.split(' · ').slice(1).join(' · ')
+    if (desc) set.add(desc)
+  }
+  return [...set]
+})
+const partDescOptions = computed(() => {
+  const set = new Set()
+  for (const u of allData.value.units ?? []) {
+    for (const p of u.parts ?? []) {
+      const desc = p.title.split(' · ').slice(1).join(' · ')
+      if (desc) set.add(desc)
+    }
+  }
+  return [...set]
+})
+
+// 切换 unitNum 时，自动填入该 Unit 已有的描述（如果只有一种）
+watchEffect(() => {
+  const match = allData.value.units?.find(u => u.title.startsWith(unitNum.value))
+  if (match && !unitDesc.value) {
+    unitDesc.value = match.title.split(' · ').slice(1).join(' · ')
+  }
+})
 
 // ── 表单状态 ──────────────────────────────────────────
 const unitNum   = ref('Unit 1');    const unitDesc   = ref('')
@@ -294,8 +323,13 @@ function dropTextColor(key) {
             class="w-32 shrink-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50">
             <option v-for="u in UNITS" :key="u" :value="u">{{ u }}</option>
           </select>
-          <input v-model="unitDesc" :disabled="isEditing" placeholder="Unit 描述（如 Cambridge 16）"
+          <input v-model="unitDesc" :disabled="isEditing"
+            list="unit-desc-list"
+            placeholder="Unit 描述（如 Cambridge 16）"
             class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
+          <datalist id="unit-desc-list">
+            <option v-for="d in unitDescOptions" :key="d" :value="d" />
+          </datalist>
         </div>
 
         <!-- Part -->
@@ -304,8 +338,13 @@ function dropTextColor(key) {
             class="w-32 shrink-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50">
             <option v-for="p in PARTS" :key="p" :value="p">{{ p }}</option>
           </select>
-          <input v-model="partDesc" :disabled="isEditing" placeholder="Part 描述（如 Listening Test 1）"
+          <input v-model="partDesc" :disabled="isEditing"
+            list="part-desc-list"
+            placeholder="Part 描述（如 Listening Test 1）"
             class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
+          <datalist id="part-desc-list">
+            <option v-for="d in partDescOptions" :key="d" :value="d" />
+          </datalist>
         </div>
 
         <!-- Exercise -->

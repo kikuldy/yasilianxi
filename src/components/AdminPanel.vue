@@ -252,26 +252,30 @@ function dropTextColor(key) {
       <div class="overflow-y-auto overflow-x-hidden flex-1 py-2">
         <div v-if="loadingData" class="px-4 py-6 text-xs text-gray-400">加载中…</div>
         <div v-else-if="!allData.units.length" class="px-4 py-6 text-xs text-gray-400">暂无内容</div>
-        <div v-for="unit in allData.units" :key="unit.title">
-          <div v-for="part in unit.parts" :key="part.title" class="mb-2">
+        <div v-for="unit in allData.units" :key="unit.title" class="mb-3">
+          <!-- Unit 标题（只出现一次） -->
+          <div class="px-3 py-1.5">
+            <span class="text-xs font-bold text-gray-200 whitespace-nowrap">{{ unit.title }}</span>
+          </div>
+
+          <!-- Part 列表（缩进） -->
+          <div v-for="part in unit.parts" :key="part.title" class="ml-3 mb-2">
             <!-- Part 标题行 -->
-            <div class="flex items-center px-3 py-1.5 gap-1">
-              <span class="text-xs font-semibold text-gray-400 whitespace-nowrap">
-                {{ unit.title }} › {{ part.title }}
-              </span>
+            <div class="flex items-center gap-1 px-2 py-1">
+              <span class="text-xs font-semibold text-gray-500 whitespace-nowrap flex-1">{{ part.title }}</span>
               <button
                 class="text-xs text-red-500 hover:text-red-400 shrink-0 px-1"
                 title="删除此分组"
                 @click="deletePart(unit.title, part.title, part.exercises.length)"
               >删</button>
             </div>
-            <!-- Exercise 列表（始终展开） -->
+            <!-- Exercise 列表 -->
             <div v-for="(ex, idx) in part.exercises" :key="idx"
-                 class="flex items-center gap-2 pl-4 pr-3 py-1.5 border-l-2 transition-colors mx-1 rounded-r"
+                 class="flex items-center gap-2 pl-3 pr-2 py-1.5 border-l-2 transition-colors rounded-r"
                  :class="editingKey.unit === unit.title && editingKey.part === part.title && editingKey.index === idx
                    ? 'border-indigo-500 bg-indigo-600/20'
                    : 'border-transparent hover:bg-gray-800'">
-              <span class="text-xs text-gray-300 whitespace-nowrap pr-2">{{ ex.title || '（无标题）' }}</span>
+              <span class="text-xs text-gray-300 whitespace-nowrap pr-1">{{ ex.title || '（无标题）' }}</span>
               <span class="text-xs text-gray-600 shrink-0">
                 {{ toArray(ex.questionImg).length }}+{{ toArray(ex.answerImg).length }}
                 <span v-if="ex.audioSrc">🔊</span>

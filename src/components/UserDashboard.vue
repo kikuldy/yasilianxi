@@ -38,6 +38,7 @@ function selectExercise(unit, part, ex) {
   showAnswer.value   = false
   showScript.value   = false
   isPlaying.value    = false
+  userAnswer.value   = ''
   if (window.innerWidth < 768) navOpen.value = false
 }
 
@@ -47,6 +48,14 @@ const currentIndex        = computed(() => currentExerciseList.value.indexOf(sel
 // ── 图片显隐 ──────────────────────────────────────────
 const showAnswer = ref(false)
 const showScript = ref(false)
+
+// ── 图片放大（Lightbox）──────────────────────────────
+const zoomedImg = ref(null)
+function openZoom(src) { zoomedImg.value = src }
+function closeZoom()   { zoomedImg.value = null }
+
+// ── 用户答案输入 ──────────────────────────────────────
+const userAnswer = ref('')
 const hasAudio   = computed(() => !!selectedEx.value?.audioSrc)
 const hasScript  = computed(() => toArray(selectedEx.value?.scriptImg).length > 0)
 
@@ -86,6 +95,7 @@ function prevExercise() {
 
 // ── 键盘快捷键 ────────────────────────────────────────
 function handleKey(e) {
+  if (e.code === 'Escape') { closeZoom(); return }
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
   if      (e.code === 'Space')      { e.preventDefault(); togglePlay() }
   else if (e.code === 'ArrowLeft')  { e.preventDefault(); seek(-5) }
@@ -160,12 +170,25 @@ function handleKey(e) {
           <template v-else>
             <!-- 题目图片（支持多张） -->
             <img v-for="(src, i) in toArray(selectedEx.questionImg)" :key="'q'+i"
-              :src="src" alt="题目" class="w-full rounded-lg" />
+              :src="src" alt="题目" class="w-full rounded-lg cursor-zoom-in"
+              @click="openZoom(src)" />
+
+            <!-- 答案输入框 -->
+            <div class="space-y-1">
+              <label class="text-xs text-gray-400">我的答案</label>
+              <textarea
+                v-model="userAnswer"
+                rows="3"
+                placeholder="在此输入你的答案，按 Z 显示正确答案对比…"
+                class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 resize-y focus:outline-none focus:border-indigo-500 transition-colors"
+              />
+            </div>
 
             <!-- 答案图片（支持多张） -->
             <template v-if="showAnswer">
               <img v-for="(src, i) in toArray(selectedEx.answerImg)" :key="'a'+i"
-                :src="src" alt="答案" class="w-full rounded-lg" />
+                :src="src" alt="答案" class="w-full rounded-lg cursor-zoom-in"
+                @click="openZoom(src)" />
             </template>
 
             <!-- 音频播放器 -->
@@ -188,7 +211,8 @@ function handleKey(e) {
             <!-- 听力原文（支持多张） -->
             <template v-if="hasScript && showScript">
               <img v-for="(src, i) in toArray(selectedEx.scriptImg)" :key="'s'+i"
-                :src="src" alt="听力原文" class="w-full rounded-lg" />
+                :src="src" alt="听力原文" class="w-full rounded-lg cursor-zoom-in"
+                @click="openZoom(src)" />
             </template>
 
             <!-- 底部操作栏 -->
@@ -214,5 +238,25 @@ function handleKey(e) {
         </div>
       </div>
     </main>
+
+    <!-- ── 图片放大 Lightbox ── -->
+    <Teleport to="body">
+      <div
+        v-if="zoomedImg"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm"
+        @click.self="closeZoom"
+      >
+        <button
+          class="absolute top-4 right-5 text-white text-3xl leading-none opacity-70 hover:opacity-100 transition-opacity"
+          @click="closeZoom"
+        >×</button>
+        <img
+          :src="zoomedImg"
+          alt="放大图片"
+          class="max-w-[92vw] max-h-[92vh] rounded-lg shadow-2xl object-contain"
+          @click="closeZoom"
+        />
+      </div>
+    </Teleport>
   </div>
 </template>

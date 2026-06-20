@@ -21,11 +21,9 @@ async function loadAll() {
 }
 onMounted(loadAll)
 
-
 function toArray(v) { if (!v) return []; return Array.isArray(v) ? v : [v] }
 
 // ── 已有描述候选（用于 datalist） ────────────────────
-// 从 KV 数据中提取 unit/part 标题里 " · " 后面的描述部分
 const unitDescOptions = computed(() => {
   const set = new Set()
   for (const u of allData.value.units ?? []) {
@@ -45,13 +43,14 @@ const partDescOptions = computed(() => {
   return [...set]
 })
 
+// ── 标签页 ────────────────────────────────────────────
+const activeTab = ref('single') // 'single' | 'batch'
 
-// ── 表单状态 ──────────────────────────────────────────
+// ── 单题表单状态 ──────────────────────────────────────
 const unitNum   = ref('Unit 1');    const unitDesc   = ref('')
 const partNum   = ref('Part 1');    const partDesc   = ref('')
 const exNum     = ref('Exercise 1');const exDesc     = ref('')
 
-// 组合标题
 const exerciseTitle = computed(() =>
   exDesc.value.trim() ? `${exNum.value} — ${exDesc.value.trim()}` : exNum.value
 )
@@ -74,10 +73,9 @@ function startNew() {
 
 function startEdit(unit, part, index, ex) {
   isEditing.value = true
-  // 拆解 unit/part 数字和描述（格式："Unit 1" 或 "Unit 1 · Cambridge 16"）
+  activeTab.value = 'single'
   const [un, ...ud] = unit.split(' · ');  unitNum.value = un;   unitDesc.value = ud.join(' · ')
   const [pn, ...pd] = part.split(' · ');  partNum.value = pn;   partDesc.value = pd.join(' · ')
-  // 拆解 exercise title（格式："Exercise 1 — Questions 1-10" 或 "Exercise 1"）
   const [en, ...ed] = (ex.title ?? '').split(' — ')
   exNum.value  = EXERCISES.includes(en) ? en : 'Exercise 1'
   exDesc.value = ed.join(' — ')
@@ -121,7 +119,7 @@ async function deleteExercise(unit, part, index, title) {
   else alert('删除失败')
 }
 
-// ── 文件选择 ──────────────────────────────────────────
+// ── 文件选择 / 上传 ───────────────────────────────────
 function onFileChange(e, key) {
   const picked = Array.from(e.target.files)
   if (key === 'audio') files.value.audio = picked[0] ?? null
@@ -135,7 +133,6 @@ function onDrop(e, key) {
   else files.value[key] = dropped
 }
 
-// ── 上传 ──────────────────────────────────────────────
 const isUploading = ref(false)
 const isSaving    = ref(false)
 const message     = ref('')
@@ -167,12 +164,10 @@ async function handleUploadAll() {
   finally { isUploading.value = false }
 }
 
-// ── 保存 ──────────────────────────────────────────────
 async function handleSave() {
   if (!urls.value.question.length || !urls.value.answer.length)
     return setMsg('请先上传题目和答案图片', false)
 
-  // 组合 unit/part 完整标题（含描述）
   const fullUnit = unitDesc.value.trim() ? `${unitNum.value} · ${unitDesc.value.trim()}` : unitNum.value
   const fullPart = partDesc.value.trim() ? `${partNum.value} · ${partDesc.value.trim()}` : partNum.value
 
@@ -206,7 +201,6 @@ async function handleSave() {
 
 function setMsg(t, ok) { message.value = t; messageOk.value = ok }
 
-// ── Drop zone 辅助 ────────────────────────────────────
 function dropHint(key) {
   const pending  = key === 'audio' ? (files.value.audio ? 1 : 0) : files.value[key].length
   const uploaded = key === 'audio' ? (urls.value.audio ? 1 : 0)  : urls.value[key].length
@@ -237,6 +231,184 @@ function dropTextColor(key) {
   if (uploaded) return 'text-green-400'
   return 'text-gray-500'
 }
+
+// ── 批量导入 ──────────────────────────────────────────
+const batchRawExercises  = ref([])
+const batchUnits         = ref([])
+const batchAllParts      = ref([])
+const batchSelectedUnit  = ref('')
+const batchUnitDesc      = ref('')
+const batchPartDescs     = ref({})   // { partFolder: description }
+const isBatchImporting   = ref(false)
+const batchProgress      = ref({ done: 0, total: 0 })
+const batchStatus        = ref('')
+const batchStatusOk      = ref(true)
+
+function parseFolderFiles(fileList) {
+  const exerciseMap = {}
+  const audioMap    = {}
+  const scriptMap   = {}
+
+  for (const file of Array.from(fileList)) {
+    if (file.name.startsWith('.')) continue
+    const segs = file.webkitRelativePath.split('/')
+    // segs[0] = selected folder name, segs[1] = type
+    if (segs.length < 3) continue
+    const type = segs[1]
+
+    if (type === 'question' || type === 'answer') {
+      // segs: [root, type, unit, part, exFolder, filename]
+      if (segs.length < 6) continue
+      const [, , unit, part, exFolder, filename] = segs
+      if (!filename || filename.startsWith('.')) continue
+      const key = `${unit}/${part}/${exFolder}`
+      if (!exerciseMap[key]) exerciseMap[key] = { unit, part, exFolder, questionFiles: [], answerFiles: [], audioFile: null, scriptFiles: [] }
+      if (type === 'question') exerciseMap[key].questionFiles.push(file)
+      else                     exerciseMap[key].answerFiles.push(file)
+
+    } else if (type === 'listening') {
+      // segs: [root, 'listening', filename]
+      const filename = segs[2]
+      if (!filename || filename.startsWith('.')) continue
+      const m = filename.match(/^listening-(\d+)\.(mp3|m4a|wav|ogg)$/i)
+      if (m) audioMap[m[1]] = file
+
+    } else if (type === 'listening scrpit') {
+      // segs: [root, 'listening scrpit', audioNum, filename]
+      if (segs.length < 4) continue
+      const audioNum = segs[2]
+      const filename = segs[3]
+      if (!filename || filename.startsWith('.')) continue
+      if (!scriptMap[audioNum]) scriptMap[audioNum] = []
+      scriptMap[audioNum].push(file)
+    }
+  }
+
+  const sortByIdx = (arr) => [...arr].sort((a, b) => {
+    const na = parseInt(a.name.match(/-(\d+)\.\w+$/)?.[1] ?? 0)
+    const nb = parseInt(b.name.match(/-(\d+)\.\w+$/)?.[1] ?? 0)
+    return na - nb
+  })
+
+  for (const key in exerciseMap) {
+    const ex = exerciseMap[key]
+    ex.questionFiles = sortByIdx(ex.questionFiles)
+    ex.answerFiles   = sortByIdx(ex.answerFiles)
+    // 格式 {n}-T-{audioNum}：链接音频和原文
+    const m = ex.exFolder.match(/^(\d+)-T-(\d+)$/)
+    if (m) {
+      const n = m[2]
+      if (audioMap[n])   ex.audioFile   = audioMap[n]
+      if (scriptMap[n])  ex.scriptFiles = sortByIdx(scriptMap[n])
+    }
+  }
+
+  const all   = Object.values(exerciseMap)
+  const units = [...new Set(all.map(e => e.unit))].sort((a, b) => {
+    return (parseInt(a.match(/\d+/)?.[0] ?? 0)) - (parseInt(b.match(/\d+/)?.[0] ?? 0))
+  })
+  const parts = [...new Set(all.map(e => e.part))].sort()
+  return { exercises: all, units, parts }
+}
+
+function onBatchFolderChange(e) {
+  const result = parseFolderFiles(e.target.files)
+  batchRawExercises.value = result.exercises
+  batchUnits.value        = result.units
+  batchAllParts.value     = result.parts
+  batchSelectedUnit.value = result.units[0] ?? ''
+  batchUnitDesc.value     = ''
+  batchStatus.value       = ''
+
+  const descs = {}
+  result.parts.forEach(p => { descs[p] = '' })
+  batchPartDescs.value = descs
+}
+
+const batchFilteredExercises = computed(() => {
+  if (!batchSelectedUnit.value) return []
+  return batchRawExercises.value
+    .filter(e => e.unit === batchSelectedUnit.value)
+    .sort((a, b) => {
+      if (a.part !== b.part) return a.part.localeCompare(b.part)
+      const na = parseInt(a.exFolder.match(/^(\d+)/)?.[1] ?? 0)
+      const nb = parseInt(b.exFolder.match(/^(\d+)/)?.[1] ?? 0)
+      return na - nb
+    })
+})
+
+const batchPartsInUnit = computed(() =>
+  [...new Set(batchFilteredExercises.value.map(e => e.part))].sort()
+)
+
+function unitFolderToLabel(f) { return f.replace(/^unit(\d+)$/, 'Unit $1') }
+function partFolderToLabel(f) { return f.replace(/^part-(\d+)$/, 'Part $1') }
+function exFolderToTitle(f)   {
+  const m = f.match(/^(\d+)/)
+  return m ? `Exercise ${parseInt(m[1])}` : f
+}
+
+async function startBatchImport() {
+  const exercises = batchFilteredExercises.value
+  if (!exercises.length) return
+
+  isBatchImporting.value = true
+  batchProgress.value    = { done: 0, total: exercises.length }
+  batchStatus.value      = '准备上传…'
+  batchStatusOk.value    = true
+
+  const results = []
+  try {
+    for (const ex of exercises) {
+      batchStatus.value = `上传 ${partFolderToLabel(ex.part)} / ${exFolderToTitle(ex.exFolder)}（${batchProgress.value.done + 1}/${exercises.length}）`
+
+      const questionUrls = await Promise.all(ex.questionFiles.map(uploadFile))
+      const answerUrls   = await Promise.all(ex.answerFiles.map(uploadFile))
+      let audioUrl  = ''
+      let scriptUrls = []
+      if (ex.audioFile)          audioUrl   = await uploadFile(ex.audioFile)
+      if (ex.scriptFiles.length) scriptUrls = await Promise.all(ex.scriptFiles.map(uploadFile))
+
+      const unitLabel = unitFolderToLabel(ex.unit)
+      const unitTitle = batchUnitDesc.value.trim()
+        ? `${unitLabel} · ${batchUnitDesc.value.trim()}`
+        : unitLabel
+      const partLabel = partFolderToLabel(ex.part)
+      const partD     = batchPartDescs.value[ex.part] ?? ''
+      const partTitle = partD.trim() ? `${partLabel} · ${partD.trim()}` : partLabel
+
+      results.push({
+        unit: unitTitle,
+        part: partTitle,
+        exercise: {
+          title:       exFolderToTitle(ex.exFolder),
+          questionImg: questionUrls,
+          answerImg:   answerUrls,
+          ...(audioUrl          && { audioSrc:  audioUrl }),
+          ...(scriptUrls.length && { scriptImg: scriptUrls }),
+        },
+      })
+      batchProgress.value.done++
+    }
+
+    batchStatus.value = '写入数据库…'
+    const res = await fetch('/api/batch-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exercises: results }),
+    })
+    if (!res.ok) throw new Error('保存失败')
+
+    batchStatus.value = `导入完成：共 ${exercises.length} 条练习`
+    batchStatusOk.value = true
+    loadAll()
+  } catch (e) {
+    batchStatus.value   = `错误：${e.message}`
+    batchStatusOk.value = false
+  } finally {
+    isBatchImporting.value = false
+  }
+}
 </script>
 
 <template>
@@ -247,20 +419,16 @@ function dropTextColor(key) {
       <div class="px-4 py-3 border-b border-gray-700 flex items-center justify-between shrink-0">
         <span class="text-sm font-medium text-gray-200">已有内容</span>
         <button class="text-xs px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-          @click="startNew">+ 新增</button>
+          @click="startNew; activeTab = 'single'">+ 新增</button>
       </div>
       <div class="overflow-y-auto overflow-x-hidden flex-1 py-2">
         <div v-if="loadingData" class="px-4 py-6 text-xs text-gray-400">加载中…</div>
         <div v-else-if="!allData.units.length" class="px-4 py-6 text-xs text-gray-400">暂无内容</div>
         <div v-for="unit in allData.units" :key="unit.title" class="mb-3">
-          <!-- Unit 标题（只出现一次） -->
           <div class="px-3 py-1.5">
             <span class="text-xs font-bold text-gray-200 whitespace-nowrap">{{ unit.title }}</span>
           </div>
-
-          <!-- Part 列表（缩进） -->
           <div v-for="part in unit.parts" :key="part.title" class="ml-3 mb-2">
-            <!-- Part 标题行 -->
             <div class="flex items-center gap-1 px-2 py-1">
               <span class="text-xs font-semibold text-gray-500 whitespace-nowrap flex-1">{{ part.title }}</span>
               <button
@@ -269,7 +437,6 @@ function dropTextColor(key) {
                 @click="deletePart(unit.title, part.title, part.exercises.length)"
               >删</button>
             </div>
-            <!-- Exercise 列表 -->
             <div v-for="(ex, idx) in part.exercises" :key="idx"
                  class="flex items-center gap-2 pl-3 pr-2 py-1.5 border-l-2 transition-colors rounded-r"
                  :class="editingKey.unit === unit.title && editingKey.part === part.title && editingKey.index === idx
@@ -290,112 +457,249 @@ function dropTextColor(key) {
       </div>
     </aside>
 
-    <!-- ── 右侧：表单 ── -->
+    <!-- ── 右侧：主区域 ── -->
     <main class="flex-1 overflow-y-auto bg-gray-950">
-      <div class="max-w-xl mx-auto p-6 space-y-5">
-        <div class="flex items-center justify-between">
+      <div class="max-w-xl mx-auto p-6">
+
+        <!-- 顶部标题行 -->
+        <div class="flex items-center justify-between mb-5">
           <h1 class="text-lg font-semibold">
-            {{ isEditing ? `编辑：${editingKey.unit} › ${editingKey.part}` : '新增内容' }}
+            <template v-if="activeTab === 'batch'">批量导入</template>
+            <template v-else-if="isEditing">编辑：{{ editingKey.unit }} › {{ editingKey.part }}</template>
+            <template v-else>新增内容</template>
           </h1>
           <a href="#/" class="text-sm text-indigo-400 hover:underline">返回前台</a>
         </div>
 
-        <!-- 编辑提示 -->
-        <div v-if="isEditing"
-             class="flex items-center justify-between bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-2 text-sm">
-          <span class="text-yellow-300">编辑模式</span>
-          <button class="text-gray-400 hover:text-white text-xs" @click="startNew">取消，切换为新增</button>
+        <!-- 标签页切换 -->
+        <div class="flex border-b border-gray-700 mb-6">
+          <button
+            class="px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px"
+            :class="activeTab === 'single'
+              ? 'border-indigo-500 text-indigo-400'
+              : 'border-transparent text-gray-400 hover:text-gray-200'"
+            @click="activeTab = 'single'">
+            单题编辑
+          </button>
+          <button
+            class="px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px"
+            :class="activeTab === 'batch'
+              ? 'border-indigo-500 text-indigo-400'
+              : 'border-transparent text-gray-400 hover:text-gray-200'"
+            @click="activeTab = 'batch'">
+            批量导入
+          </button>
         </div>
 
-        <!-- Unit -->
-        <div class="flex gap-2">
-          <select v-model="unitNum" :disabled="isEditing"
-            class="w-32 shrink-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50">
-            <option v-for="u in UNITS" :key="u" :value="u">{{ u }}</option>
-          </select>
-          <div class="flex-1 flex gap-1">
-            <!-- 已有描述下拉（有历史记录时显示） -->
-            <select v-if="unitDescOptions.length && !isEditing"
-              class="bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-gray-400 focus:outline-none focus:border-indigo-500"
-              @change="unitDesc = $event.target.value; $event.target.value = ''">
-              <option value="">选已有</option>
-              <option v-for="d in unitDescOptions" :key="d" :value="d">{{ d }}</option>
-            </select>
-            <input v-model="unitDesc" :disabled="isEditing"
-              placeholder="Unit 描述（如 Cambridge 16）"
-              class="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
+        <!-- ══ 单题编辑 ══ -->
+        <div v-if="activeTab === 'single'" class="space-y-5">
+
+          <!-- 编辑模式提示 -->
+          <div v-if="isEditing"
+               class="flex items-center justify-between bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-2 text-sm">
+            <span class="text-yellow-300">编辑模式</span>
+            <button class="text-gray-400 hover:text-white text-xs" @click="startNew">取消，切换为新增</button>
           </div>
-        </div>
 
-        <!-- Part -->
-        <div class="flex gap-2">
-          <select v-model="partNum" :disabled="isEditing"
-            class="w-32 shrink-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50">
-            <option v-for="p in PARTS" :key="p" :value="p">{{ p }}</option>
-          </select>
-          <div class="flex-1 flex gap-1">
-            <select v-if="partDescOptions.length && !isEditing"
-              class="bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-gray-400 focus:outline-none focus:border-indigo-500"
-              @change="partDesc = $event.target.value; $event.target.value = ''">
-              <option value="">选已有</option>
-              <option v-for="d in partDescOptions" :key="d" :value="d">{{ d }}</option>
+          <!-- Unit -->
+          <div class="flex gap-2">
+            <select v-model="unitNum" :disabled="isEditing"
+              class="w-32 shrink-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50">
+              <option v-for="u in UNITS" :key="u" :value="u">{{ u }}</option>
             </select>
-            <input v-model="partDesc" :disabled="isEditing"
-              placeholder="Part 描述（如 Listening Test 1）"
-              class="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
+            <div class="flex-1 flex gap-1">
+              <select v-if="unitDescOptions.length && !isEditing"
+                class="bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-gray-400 focus:outline-none focus:border-indigo-500"
+                @change="unitDesc = $event.target.value; $event.target.value = ''">
+                <option value="">选已有</option>
+                <option v-for="d in unitDescOptions" :key="d" :value="d">{{ d }}</option>
+              </select>
+              <input v-model="unitDesc" :disabled="isEditing"
+                placeholder="Unit 描述（如 Cambridge 16）"
+                class="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
+            </div>
           </div>
+
+          <!-- Part -->
+          <div class="flex gap-2">
+            <select v-model="partNum" :disabled="isEditing"
+              class="w-32 shrink-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50">
+              <option v-for="p in PARTS" :key="p" :value="p">{{ p }}</option>
+            </select>
+            <div class="flex-1 flex gap-1">
+              <select v-if="partDescOptions.length && !isEditing"
+                class="bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-gray-400 focus:outline-none focus:border-indigo-500"
+                @change="partDesc = $event.target.value; $event.target.value = ''">
+                <option value="">选已有</option>
+                <option v-for="d in partDescOptions" :key="d" :value="d">{{ d }}</option>
+              </select>
+              <input v-model="partDesc" :disabled="isEditing"
+                placeholder="Part 描述（如 Listening Test 1）"
+                class="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50" />
+            </div>
+          </div>
+
+          <!-- Exercise -->
+          <div class="flex gap-2">
+            <select v-model="exNum"
+              class="w-32 shrink-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+              <option v-for="e in EXERCISES" :key="e" :value="e">{{ e }}</option>
+            </select>
+            <input v-model="exDesc" placeholder="题目范围（如 Questions 1-10）"
+              class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" />
+          </div>
+          <p class="text-xs text-gray-500 -mt-3 pl-1">
+            标题预览：<span class="text-gray-300">{{ exerciseTitle }}</span>
+          </p>
+
+          <!-- Drop Zones -->
+          <div class="space-y-3">
+            <template v-for="row in [
+              { key: 'question', label: '题目图片（必填，可多张）',     accept: 'image/*', multi: true  },
+              { key: 'answer',   label: '答案图片（必填，可多张）',     accept: 'image/*', multi: true  },
+              { key: 'audio',    label: '音频文件（可选）',             accept: 'audio/*', multi: false },
+              { key: 'script',   label: '听力原文图片（可选，可多张）', accept: 'image/*', multi: true  },
+            ]" :key="row.key">
+              <label class="relative flex items-center gap-3 rounded-lg border-2 border-dashed px-4 py-3 cursor-pointer transition-colors"
+                :class="dropBorder(row.key)"
+                @dragover.prevent="dragging = row.key"
+                @dragleave="dragging = null"
+                @drop.prevent="onDrop($event, row.key)">
+                <span class="text-xl shrink-0">{{ dropIcon(row.key) }}</span>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-gray-300">{{ row.label }}</p>
+                  <p class="text-xs mt-0.5" :class="dropTextColor(row.key)">{{ dropHint(row.key) }}</p>
+                </div>
+                <input type="file" :accept="row.accept" :multiple="row.multi"
+                  class="absolute inset-0 opacity-0 cursor-pointer"
+                  @change="onFileChange($event, row.key)" />
+              </label>
+            </template>
+          </div>
+
+          <button class="w-full bg-gray-700 hover:bg-gray-600 rounded py-2 text-sm disabled:opacity-40 transition-colors"
+            :disabled="isUploading" @click="handleUploadAll">
+            {{ isUploading ? '上传中…' : '① 上传文件到 R2' }}
+          </button>
+          <button class="w-full bg-indigo-600 hover:bg-indigo-500 rounded py-2 text-sm disabled:opacity-40 transition-colors"
+            :disabled="isSaving" @click="handleSave">
+            {{ isSaving ? '保存中…' : isEditing ? '② 保存修改' : '② 保存并发布' }}
+          </button>
+
+          <p v-if="message" class="text-sm text-center"
+             :class="messageOk ? 'text-green-400' : 'text-red-400'">{{ message }}</p>
         </div>
 
-        <!-- Exercise -->
-        <div class="flex gap-2">
-          <select v-model="exNum"
-            class="w-32 shrink-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
-            <option v-for="e in EXERCISES" :key="e" :value="e">{{ e }}</option>
-          </select>
-          <input v-model="exDesc" placeholder="题目范围（如 Questions 1-10）"
-            class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" />
-        </div>
-        <!-- 预览标题 -->
-        <p class="text-xs text-gray-500 -mt-3 pl-1">
-          标题预览：<span class="text-gray-300">{{ exerciseTitle }}</span>
-        </p>
+        <!-- ══ 批量导入 ══ -->
+        <div v-else class="space-y-5">
 
-        <!-- Drop Zones -->
-        <div class="space-y-3">
-          <template v-for="row in [
-            { key: 'question', label: '题目图片（必填，可多张）',     accept: 'image/*', multi: true  },
-            { key: 'answer',   label: '答案图片（必填，可多张）',     accept: 'image/*', multi: true  },
-            { key: 'audio',    label: '音频文件（可选）',             accept: 'audio/*', multi: false },
-            { key: 'script',   label: '听力原文图片（可选，可多张）', accept: 'image/*', multi: true  },
-          ]" :key="row.key">
-            <label class="relative flex items-center gap-3 rounded-lg border-2 border-dashed px-4 py-3 cursor-pointer transition-colors"
-              :class="dropBorder(row.key)"
-              @dragover.prevent="dragging = row.key"
-              @dragleave="dragging = null"
-              @drop.prevent="onDrop($event, row.key)">
-              <span class="text-xl shrink-0">{{ dropIcon(row.key) }}</span>
-              <div class="flex-1 min-w-0">
-                <p class="text-sm text-gray-300">{{ row.label }}</p>
-                <p class="text-xs mt-0.5" :class="dropTextColor(row.key)">{{ dropHint(row.key) }}</p>
+          <!-- 说明 -->
+          <p class="text-xs text-gray-500 leading-relaxed">
+            选择本地 <code class="text-gray-300 bg-gray-800 px-1 rounded">public/data</code> 目录，系统自动识别文件结构并匹配题目 / 答案 / 音频 / 原文，预览无误后一键上传发布。
+          </p>
+
+          <!-- 选择文件夹 -->
+          <label class="relative flex items-center gap-4 rounded-lg border-2 border-dashed border-gray-700 bg-gray-800/50 hover:border-gray-500 px-5 py-4 cursor-pointer transition-colors">
+            <span class="text-2xl">📁</span>
+            <div>
+              <p class="text-sm text-gray-200 font-medium">选择 data 文件夹</p>
+              <p class="text-xs text-gray-500 mt-0.5">
+                {{ batchRawExercises.length
+                    ? `已识别 ${batchRawExercises.length} 条练习，来自 ${batchUnits.length} 个 Unit`
+                    : '点击选择 public/data 目录（含 question / answer / listening / listening scrpit 子文件夹）' }}
+              </p>
+            </div>
+            <input type="file" webkitdirectory class="absolute inset-0 opacity-0 cursor-pointer"
+              @change="onBatchFolderChange" />
+          </label>
+
+          <!-- 选择 Unit + 描述 -->
+          <template v-if="batchUnits.length">
+            <div class="space-y-3">
+              <div class="flex gap-2">
+                <select v-model="batchSelectedUnit"
+                  class="w-32 shrink-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                  <option v-for="u in batchUnits" :key="u" :value="u">{{ unitFolderToLabel(u) }}</option>
+                </select>
+                <input v-model="batchUnitDesc" placeholder="Unit 描述（如 Cambridge 16）"
+                  class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" />
               </div>
-              <input type="file" :accept="row.accept" :multiple="row.multi"
-                class="absolute inset-0 opacity-0 cursor-pointer"
-                @change="onFileChange($event, row.key)" />
-            </label>
+
+              <!-- Part 描述 -->
+              <div class="rounded-lg border border-gray-700 overflow-hidden">
+                <div class="px-3 py-2 bg-gray-800 text-xs text-gray-400">Part 描述（可选，留空则只显示 Part 1 / Part 2…）</div>
+                <div class="divide-y divide-gray-800">
+                  <div v-for="p in batchPartsInUnit" :key="p" class="flex items-center gap-3 px-3 py-2">
+                    <span class="text-sm text-gray-400 w-14 shrink-0">{{ partFolderToLabel(p) }}</span>
+                    <input v-model="batchPartDescs[p]" placeholder="描述（如 Listening Test 1）"
+                      class="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-500" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 预览表格 -->
+            <div class="rounded-lg border border-gray-700 overflow-hidden">
+              <div class="px-3 py-2 bg-gray-800 flex items-center justify-between">
+                <span class="text-xs text-gray-400">预览 — {{ batchFilteredExercises.length }} 条练习</span>
+                <span v-if="batchUnitDesc" class="text-xs text-indigo-400">
+                  {{ unitFolderToLabel(batchSelectedUnit) }} · {{ batchUnitDesc }}
+                </span>
+              </div>
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="bg-gray-800/50 text-gray-500">
+                    <th class="px-3 py-2 text-left font-normal">Part</th>
+                    <th class="px-3 py-2 text-left font-normal">Exercise</th>
+                    <th class="px-3 py-2 text-center font-normal">题目</th>
+                    <th class="px-3 py-2 text-center font-normal">答案</th>
+                    <th class="px-3 py-2 text-center font-normal">音频</th>
+                    <th class="px-3 py-2 text-center font-normal">原文</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-800">
+                  <tr v-for="ex in batchFilteredExercises" :key="`${ex.part}/${ex.exFolder}`"
+                      class="text-gray-300 hover:bg-gray-800/40 transition-colors">
+                    <td class="px-3 py-2 text-gray-500">{{ partFolderToLabel(ex.part) }}</td>
+                    <td class="px-3 py-2">{{ exFolderToTitle(ex.exFolder) }}</td>
+                    <td class="px-3 py-2 text-center">{{ ex.questionFiles.length }} 张</td>
+                    <td class="px-3 py-2 text-center">{{ ex.answerFiles.length }} 张</td>
+                    <td class="px-3 py-2 text-center">
+                      <span v-if="ex.audioFile" class="text-green-400">🔊</span>
+                      <span v-else class="text-gray-700">—</span>
+                    </td>
+                    <td class="px-3 py-2 text-center">
+                      <span v-if="ex.scriptFiles.length" class="text-blue-400">{{ ex.scriptFiles.length }} 张</span>
+                      <span v-else class="text-gray-700">—</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 进度条 -->
+            <div v-if="isBatchImporting" class="space-y-2">
+              <div class="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                <div class="h-full bg-indigo-500 transition-all duration-300 rounded-full"
+                     :style="{ width: `${(batchProgress.done / batchProgress.total) * 100}%` }"></div>
+              </div>
+              <p class="text-xs text-gray-400 text-center">{{ batchStatus }}</p>
+            </div>
+            <p v-else-if="batchStatus" class="text-sm text-center"
+               :class="batchStatusOk ? 'text-green-400' : 'text-red-400'">{{ batchStatus }}</p>
+
+            <!-- 导入按钮 -->
+            <button
+              class="w-full bg-indigo-600 hover:bg-indigo-500 rounded py-2.5 text-sm font-medium disabled:opacity-40 transition-colors"
+              :disabled="isBatchImporting || !batchFilteredExercises.length"
+              @click="startBatchImport">
+              {{ isBatchImporting
+                  ? `上传中… ${batchProgress.done}/${batchProgress.total}`
+                  : `上传并发布 ${batchFilteredExercises.length} 条练习` }}
+            </button>
           </template>
         </div>
 
-        <button class="w-full bg-gray-700 hover:bg-gray-600 rounded py-2 text-sm disabled:opacity-40 transition-colors"
-          :disabled="isUploading" @click="handleUploadAll">
-          {{ isUploading ? '上传中…' : '① 上传文件到 R2' }}
-        </button>
-        <button class="w-full bg-indigo-600 hover:bg-indigo-500 rounded py-2 text-sm disabled:opacity-40 transition-colors"
-          :disabled="isSaving" @click="handleSave">
-          {{ isSaving ? '保存中…' : isEditing ? '② 保存修改' : '② 保存并发布' }}
-        </button>
-
-        <p v-if="message" class="text-sm text-center"
-           :class="messageOk ? 'text-green-400' : 'text-red-400'">{{ message }}</p>
       </div>
     </main>
   </div>

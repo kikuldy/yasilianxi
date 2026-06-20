@@ -1,0 +1,264 @@
+{
+  "exercises": [
+    {
+      "unit": "unit1",
+      "part": "part-1",
+      "exFolder": "1",
+      "questionFiles": [
+        "1-1.png"
+      ],
+      "answerFiles": [
+        "1-1.png"
+      ],
+      "audioNum": null,
+      "audioFile": null,
+      "scriptFiles": []
+    },
+    {
+      "unit": "unit1",
+      "part": "part-1",
+      "exFolder": "2",
+      "questionFiles": [
+        "2-1.png",
+        "2-2.png"
+      ],
+      "answerFiles": [
+        "2-1.png"
+      ],
+      "audioNum": null,
+      "audioFile": null,
+      "scriptFiles": []
+    },
+    {
+      "unit": "unit1",
+      "part": "part-1",
+      "exFolder": "3",
+      "questionFiles": [
+        "3-1.png"
+      ],
+      "answerFiles": [
+        "3-1.png"
+      ],
+      "audioNum": null,
+      "audioFile": null,
+      "scriptFiles": []
+    },
+    {
+      "unit": "unit1",
+      "part": "part-1",
+      "exFolder": "4",
+      "questionFiles": [
+        "4-1.png"
+      ],
+      "answerFiles": [
+        "4-1.png"
+      ],
+      "audioNum": null,
+      "audioFile": null,
+      "scriptFiles": []
+    },
+    {
+      "unit": "unit1",
+      "part": "part-2",
+      "exFolder": "1-T-1",
+      "questionFiles": [
+        "1-T-1-1.png"
+      ],
+      "answerFiles": [
+        "1-T-1-1.png"
+      ],
+      "audioNum": "1",
+      "audioFile": "listening-1.mp3",
+      "scriptFiles": [
+        "1-1.png"
+      ]
+    },
+    {
+      "unit": "unit1",
+      "part": "part-2",
+      "exFolder": "10-T-5",
+      "questionFiles": [
+        "10-T-5-1.png"
+      ],
+      "answerFiles": [
+        "10-T-5-1.png"
+      ],
+      "audioNum": "5",
+      "audioFile": "listening-5.mp3",
+      "scriptFiles": [
+        "5-1.png"
+      ]
+    },
+    {
+      "unit": "unit1",
+      "part": "part-2",
+      "exFolder": "2-T-1",
+      "questionFiles": [
+        "2-T-1-1.png"
+      ],
+      "answerFiles": [
+        "2-T-1-1.png"
+      ],
+      "audioNum": "1",
+      "audioFile": "listening-1.mp3",
+      "scriptFiles": [
+        "1-1.png"
+      ]
+    },
+    {
+      "unit": "unit1",
+      "part": "part-2",
+      "exFolder": "3",
+      "questionFiles": [
+        "3-1.png"
+      ],
+      "answerFiles": [
+        "3-1.png"
+      ],
+      "audioNum": null,
+      "audioFile": null,
+      "scriptFiles": []
+    },
+    {
+      "unit": "unit1",
+      "part": "part-2",
+      "exFolder": "4",
+      "questionFiles": [
+        "4-1.png"
+      ],
+      "answerFiles": [
+        "4-1.png"
+      ],
+      "audioNum": null,
+      "audioFile": null,
+      "scriptFiles": []
+    },
+    {
+      "unit": "unit1",
+      "part": "part-2",
+      "exFolder": "5-T-2",
+      "questionFiles": [
+        "5-T-2-1.png"
+      ],
+      "answerFiles": [
+        "5-T-2-1.png"
+      ],
+      "audioNum": "2",
+      "audioFile": "listening-2.mp3",
+      "scriptFiles": [
+        "2-1.png"
+      ]
+    },
+    {
+      "unit": "unit1",
+      "part": "part-2",
+      "exFolder": "6",
+      "questionFiles": [
+        "6-1.png"
+      ],
+      "answerFiles": [
+        "6-1.png"
+      ],
+      "audioNum": null,
+      "audioFile": null,
+      "scriptFiles": []
+    },
+    {
+      "unit": "unit1",
+      "part": "part-2",
+      "exFolder": "7-T-3",
+      "questionFiles": [
+        "7-T-3-1.png"
+      ],
+      "answerFiles": [
+        "7-T-3-1.png"
+      ],
+      "audioNum": "3",
+      "audioFile": "listening-3.mp3",
+      "scriptFiles": [
+        "3-1.png",
+        "3-2.png"
+      ]
+    },
+    {
+      "unit": "unit1",
+      "part": "part-2",
+      "exFolder": "8",
+      "questionFiles": [
+        "8-1.png"
+      ],
+      "answerFiles": [
+        "8-1.png"
+      ],
+      "audioNum": null,
+      "audioFile": null,
+      "scriptFiles": []
+    },
+    {
+      "unit": "unit1",
+      "part": "part-2",
+      "exFolder": "9-T-4",
+      "questionFiles": [
+        "9-T-4-1.png"
+      ],
+      "answerFiles": [
+        "9-T-4-1.png",
+        "9-T-4-2.png"
+      ],
+      "audioNum": "4",
+      "audioFile": "listening-4.mp3",
+      "scriptFiles": [
+        "4-1.png"
+      ]
+    },
+    {
+      "unit": "unit1",
+      "part": "part-3",
+      "exFolder": "1-T-6",
+      "questionFiles": [
+        "1-T-6-1.png"
+      ],
+      "answerFiles": [
+        "1-T-6-1.png"
+      ],
+      "audioNum": "6",
+      "audioFile": "listening-6.mp3",
+      "scriptFiles": [
+        "6-1.png",
+        "6-2.png"
+      ]
+    },
+    {
+      "unit": "unit1",
+      "part": "part-3",
+      "exFolder": "2-T-7",
+      "questionFiles": [
+        "2-T-7-1.png"
+      ],
+      "answerFiles": [
+        "2-T-7-1.png"
+      ],
+      "audioNum": "7",
+      "audioFile": "listening-7.mp3",
+      "scriptFiles": [
+        "7-1.png"
+      ]
+    },
+    {
+      "unit": "unit1",
+      "part": "part-3",
+      "exFolder": "3-T-7",
+      "questionFiles": [
+        "3-T-7-1.png"
+      ],
+      "answerFiles": [
+        "3-T-7-1.png"
+      ],
+      "audioNum": "7",
+      "audioFile": "listening-7.mp3",
+      "scriptFiles": [
+        "7-1.png"
+      ]
+    }
+  ]
+}

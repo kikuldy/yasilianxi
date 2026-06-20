@@ -23,7 +23,7 @@ onMounted(loadAll)
 
 function toArray(v) { if (!v) return []; return Array.isArray(v) ? v : [v] }
 
-// ── 已有描述候选（用于 datalist） ────────────────────
+// ── 已有描述候选 ──────────────────────────────────────
 const unitDescOptions = computed(() => {
   const set = new Set()
   for (const u of allData.value.units ?? []) {
@@ -47,9 +47,9 @@ const partDescOptions = computed(() => {
 const activeTab = ref('single') // 'single' | 'batch'
 
 // ── 单题表单状态 ──────────────────────────────────────
-const unitNum   = ref('Unit 1');    const unitDesc   = ref('')
-const partNum   = ref('Part 1');    const partDesc   = ref('')
-const exNum     = ref('Exercise 1');const exDesc     = ref('')
+const unitNum = ref('Unit 1');  const unitDesc = ref('')
+const partNum = ref('Part 1');  const partDesc = ref('')
+const exNum   = ref('Exercise 1'); const exDesc = ref('')
 
 const exerciseTitle = computed(() =>
   exDesc.value.trim() ? `${exNum.value} — ${exDesc.value.trim()}` : exNum.value
@@ -74,12 +74,11 @@ function startNew() {
 function startEdit(unit, part, index, ex) {
   isEditing.value = true
   activeTab.value = 'single'
-  const [un, ...ud] = unit.split(' · ');  unitNum.value = un;   unitDesc.value = ud.join(' · ')
-  const [pn, ...pd] = part.split(' · ');  partNum.value = pn;   partDesc.value = pd.join(' · ')
+  const [un, ...ud] = unit.split(' · ');  unitNum.value = un; unitDesc.value = ud.join(' · ')
+  const [pn, ...pd] = part.split(' · ');  partNum.value = pn; partDesc.value = pd.join(' · ')
   const [en, ...ed] = (ex.title ?? '').split(' — ')
   exNum.value  = EXERCISES.includes(en) ? en : 'Exercise 1'
   exDesc.value = ed.join(' — ')
-
   files.value = { question: [], answer: [], audio: null, script: [] }
   urls.value  = {
     question: toArray(ex.questionImg),
@@ -119,7 +118,7 @@ async function deleteExercise(unit, part, index, title) {
   else alert('删除失败')
 }
 
-// ── 文件选择 / 上传 ───────────────────────────────────
+// ── 文件选择 / 上传（单题） ───────────────────────────
 function onFileChange(e, key) {
   const picked = Array.from(e.target.files)
   if (key === 'audio') files.value.audio = picked[0] ?? null
@@ -233,128 +232,82 @@ function dropTextColor(key) {
 }
 
 // ── 批量导入 ──────────────────────────────────────────
-const batchRawExercises  = ref([])
-const batchUnits         = ref([])
-const batchAllParts      = ref([])
-const batchSelectedUnit  = ref('')
-const batchUnitDesc      = ref('')
-const batchPartDescs     = ref({})   // { partFolder: description }
-const isBatchImporting   = ref(false)
-const batchProgress      = ref({ done: 0, total: 0 })
-const batchStatus        = ref('')
-const batchStatusOk      = ref(true)
+const batchUnitNum      = ref(1)      // 1-12，用户选择的 Unit 编号
+const batchUnitDesc     = ref('')
+const batchPartDescs    = ref({})     // { 'part-1': '描述', ... }
 
-function parseFolderFiles(fileList) {
-  const exerciseMap = {}
-  const audioMap    = {}
-  const scriptMap   = {}
+const manifest          = ref(null)   // 从 /data/manifest.json 读取
+const manifestLoading   = ref(false)
+const manifestError     = ref('')
 
-  for (const file of Array.from(fileList)) {
-    if (file.name.startsWith('.')) continue
-    const segs = file.webkitRelativePath.split('/')
-    // segs[0] = selected folder name, segs[1] = type
-    if (segs.length < 3) continue
-    const type = segs[1]
-
-    if (type === 'question' || type === 'answer') {
-      // segs: [root, type, unit, part, exFolder, filename]
-      if (segs.length < 6) continue
-      const [, , unit, part, exFolder, filename] = segs
-      if (!filename || filename.startsWith('.')) continue
-      const key = `${unit}/${part}/${exFolder}`
-      if (!exerciseMap[key]) exerciseMap[key] = { unit, part, exFolder, questionFiles: [], answerFiles: [], audioFile: null, scriptFiles: [] }
-      if (type === 'question') exerciseMap[key].questionFiles.push(file)
-      else                     exerciseMap[key].answerFiles.push(file)
-
-    } else if (type === 'listening') {
-      // segs: [root, 'listening', filename]
-      const filename = segs[2]
-      if (!filename || filename.startsWith('.')) continue
-      const m = filename.match(/^listening-(\d+)\.(mp3|m4a|wav|ogg)$/i)
-      if (m) audioMap[m[1]] = file
-
-    } else if (type === 'listening scrpit') {
-      // segs: [root, 'listening scrpit', audioNum, filename]
-      if (segs.length < 4) continue
-      const audioNum = segs[2]
-      const filename = segs[3]
-      if (!filename || filename.startsWith('.')) continue
-      if (!scriptMap[audioNum]) scriptMap[audioNum] = []
-      scriptMap[audioNum].push(file)
-    }
-  }
-
-  const sortByIdx = (arr) => [...arr].sort((a, b) => {
-    const na = parseInt(a.name.match(/-(\d+)\.\w+$/)?.[1] ?? 0)
-    const nb = parseInt(b.name.match(/-(\d+)\.\w+$/)?.[1] ?? 0)
-    return na - nb
-  })
-
-  for (const key in exerciseMap) {
-    const ex = exerciseMap[key]
-    ex.questionFiles = sortByIdx(ex.questionFiles)
-    ex.answerFiles   = sortByIdx(ex.answerFiles)
-    // 格式 {n}-T-{audioNum}：链接音频和原文
-    const m = ex.exFolder.match(/^(\d+)-T-(\d+)$/)
-    if (m) {
-      const n = m[2]
-      if (audioMap[n])   ex.audioFile   = audioMap[n]
-      if (scriptMap[n])  ex.scriptFiles = sortByIdx(scriptMap[n])
-    }
-  }
-
-  const all   = Object.values(exerciseMap)
-  const units = [...new Set(all.map(e => e.unit))].sort((a, b) => {
-    return (parseInt(a.match(/\d+/)?.[0] ?? 0)) - (parseInt(b.match(/\d+/)?.[0] ?? 0))
-  })
-  const parts = [...new Set(all.map(e => e.part))].sort()
-  return { exercises: all, units, parts }
-}
-
-function onBatchFolderChange(e) {
-  const result = parseFolderFiles(e.target.files)
-  batchRawExercises.value = result.exercises
-  batchUnits.value        = result.units
-  batchAllParts.value     = result.parts
-  batchSelectedUnit.value = result.units[0] ?? ''
-  batchUnitDesc.value     = ''
-  batchStatus.value       = ''
-
-  const descs = {}
-  result.parts.forEach(p => { descs[p] = '' })
-  batchPartDescs.value = descs
-}
-
-const batchFilteredExercises = computed(() => {
-  if (!batchSelectedUnit.value) return []
-  return batchRawExercises.value
-    .filter(e => e.unit === batchSelectedUnit.value)
+const batchPreview = computed(() => {
+  if (!manifest.value) return []
+  const target = `unit${batchUnitNum.value}`
+  return manifest.value.exercises
+    .filter(e => e.unit === target)
     .sort((a, b) => {
       if (a.part !== b.part) return a.part.localeCompare(b.part)
-      const na = parseInt(a.exFolder.match(/^(\d+)/)?.[1] ?? 0)
-      const nb = parseInt(b.exFolder.match(/^(\d+)/)?.[1] ?? 0)
-      return na - nb
+      return parseInt(a.exFolder) - parseInt(b.exFolder)
     })
 })
 
-const batchPartsInUnit = computed(() =>
-  [...new Set(batchFilteredExercises.value.map(e => e.part))].sort()
+const batchPartsInPreview = computed(() =>
+  [...new Set(batchPreview.value.map(e => e.part))].sort()
 )
 
-function unitFolderToLabel(f) { return f.replace(/^unit(\d+)$/, 'Unit $1') }
+// Unit 数字改变时，重置描述但保留 manifest（manifest 含所有 unit）
+function onBatchUnitNumChange() {
+  batchUnitDesc.value  = ''
+  batchPartDescs.value = {}
+  batchStatus.value    = ''
+}
+
+async function loadManifest() {
+  manifestLoading.value = true
+  manifestError.value   = ''
+  try {
+    const res = await fetch('/data/manifest.json?t=' + Date.now())
+    if (!res.ok) throw new Error('找不到 manifest.json，请先运行 npm run manifest')
+    manifest.value = await res.json()
+  } catch (e) {
+    manifestError.value = e.message
+  } finally {
+    manifestLoading.value = false
+  }
+}
+
+// 切换到批量导入 tab 时自动加载 manifest
+function switchToBatch() {
+  activeTab.value = 'batch'
+  if (!manifest.value && !manifestLoading.value) loadManifest()
+}
+
 function partFolderToLabel(f) { return f.replace(/^part-(\d+)$/, 'Part $1') }
 function exFolderToTitle(f)   {
   const m = f.match(/^(\d+)/)
   return m ? `Exercise ${parseInt(m[1])}` : f
 }
 
+// 从静态 URL fetch 文件并转为 File 对象
+async function fetchAsFile(url, filename) {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`文件不存在：${url}`)
+  const blob = await res.blob()
+  return new File([blob], filename, { type: blob.type })
+}
+
+const isBatchImporting = ref(false)
+const batchProgress    = ref({ done: 0, total: 0 })
+const batchStatus      = ref('')
+const batchStatusOk    = ref(true)
+
 async function startBatchImport() {
-  const exercises = batchFilteredExercises.value
+  const exercises = batchPreview.value
   if (!exercises.length) return
 
   isBatchImporting.value = true
   batchProgress.value    = { done: 0, total: exercises.length }
-  batchStatus.value      = '准备上传…'
+  batchStatus.value      = '准备中…'
   batchStatusOk.value    = true
 
   const results = []
@@ -362,14 +315,32 @@ async function startBatchImport() {
     for (const ex of exercises) {
       batchStatus.value = `上传 ${partFolderToLabel(ex.part)} / ${exFolderToTitle(ex.exFolder)}（${batchProgress.value.done + 1}/${exercises.length}）`
 
-      const questionUrls = await Promise.all(ex.questionFiles.map(uploadFile))
-      const answerUrls   = await Promise.all(ex.answerFiles.map(uploadFile))
-      let audioUrl  = ''
-      let scriptUrls = []
-      if (ex.audioFile)          audioUrl   = await uploadFile(ex.audioFile)
-      if (ex.scriptFiles.length) scriptUrls = await Promise.all(ex.scriptFiles.map(uploadFile))
+      // fetch 题目图片
+      const questionFiles = await Promise.all(
+        ex.questionFiles.map(f => fetchAsFile(`/data/question/${ex.unit}/${ex.part}/${ex.exFolder}/${f}`, f))
+      )
+      const answerFiles = await Promise.all(
+        ex.answerFiles.map(f => fetchAsFile(`/data/answer/${ex.unit}/${ex.part}/${ex.exFolder}/${f}`, f))
+      )
 
-      const unitLabel = unitFolderToLabel(ex.unit)
+      const questionUrls = await Promise.all(questionFiles.map(uploadFile))
+      const answerUrls   = await Promise.all(answerFiles.map(uploadFile))
+
+      let audioUrl   = ''
+      let scriptUrls = []
+
+      if (ex.audioFile) {
+        const audioFile = await fetchAsFile(`/data/listening/${ex.audioFile}`, ex.audioFile)
+        audioUrl = await uploadFile(audioFile)
+      }
+      if (ex.scriptFiles.length) {
+        const scriptFiles = await Promise.all(
+          ex.scriptFiles.map(f => fetchAsFile(`/data/listening scrpit/${ex.audioNum}/${f}`, f))
+        )
+        scriptUrls = await Promise.all(scriptFiles.map(uploadFile))
+      }
+
+      const unitLabel = `Unit ${batchUnitNum.value}`
       const unitTitle = batchUnitDesc.value.trim()
         ? `${unitLabel} · ${batchUnitDesc.value.trim()}`
         : unitLabel
@@ -399,7 +370,7 @@ async function startBatchImport() {
     })
     if (!res.ok) throw new Error('保存失败')
 
-    batchStatus.value = `导入完成：共 ${exercises.length} 条练习`
+    batchStatus.value   = `导入完成：共 ${exercises.length} 条练习`
     batchStatusOk.value = true
     loadAll()
   } catch (e) {
@@ -419,7 +390,7 @@ async function startBatchImport() {
       <div class="px-4 py-3 border-b border-gray-700 flex items-center justify-between shrink-0">
         <span class="text-sm font-medium text-gray-200">已有内容</span>
         <button class="text-xs px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-          @click="startNew; activeTab = 'single'">+ 新增</button>
+          @click="startNew(); activeTab = 'single'">+ 新增</button>
       </div>
       <div class="overflow-y-auto overflow-x-hidden flex-1 py-2">
         <div v-if="loadingData" class="px-4 py-6 text-xs text-gray-400">加载中…</div>
@@ -486,7 +457,7 @@ async function startBatchImport() {
             :class="activeTab === 'batch'
               ? 'border-indigo-500 text-indigo-400'
               : 'border-transparent text-gray-400 hover:text-gray-200'"
-            @click="activeTab = 'batch'">
+            @click="switchToBatch">
             批量导入
           </button>
         </div>
@@ -494,7 +465,6 @@ async function startBatchImport() {
         <!-- ══ 单题编辑 ══ -->
         <div v-if="activeTab === 'single'" class="space-y-5">
 
-          <!-- 编辑模式提示 -->
           <div v-if="isEditing"
                class="flex items-center justify-between bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-2 text-sm">
             <span class="text-yellow-300">编辑模式</span>
@@ -593,111 +563,113 @@ async function startBatchImport() {
         <!-- ══ 批量导入 ══ -->
         <div v-else class="space-y-5">
 
-          <!-- 说明 -->
-          <p class="text-xs text-gray-500 leading-relaxed">
-            选择本地 <code class="text-gray-300 bg-gray-800 px-1 rounded">public/data</code> 目录，系统自动识别文件结构并匹配题目 / 答案 / 音频 / 原文，预览无误后一键上传发布。
-          </p>
+          <!-- manifest 加载状态 -->
+          <div v-if="manifestLoading" class="text-xs text-gray-400 text-center py-4">读取文件列表中…</div>
+          <div v-else-if="manifestError"
+               class="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400 space-y-2">
+            <p>{{ manifestError }}</p>
+            <button class="text-xs underline text-red-300 hover:text-red-200" @click="loadManifest">重试</button>
+          </div>
 
-          <!-- 选择文件夹 -->
-          <label class="relative flex items-center gap-4 rounded-lg border-2 border-dashed border-gray-700 bg-gray-800/50 hover:border-gray-500 px-5 py-4 cursor-pointer transition-colors">
-            <span class="text-2xl">📁</span>
-            <div>
-              <p class="text-sm text-gray-200 font-medium">选择 data 文件夹</p>
-              <p class="text-xs text-gray-500 mt-0.5">
-                {{ batchRawExercises.length
-                    ? `已识别 ${batchRawExercises.length} 条练习，来自 ${batchUnits.length} 个 Unit`
-                    : '点击选择 public/data 目录（含 question / answer / listening / listening scrpit 子文件夹）' }}
-              </p>
-            </div>
-            <input type="file" webkitdirectory class="absolute inset-0 opacity-0 cursor-pointer"
-              @change="onBatchFolderChange" />
-          </label>
+          <template v-else-if="manifest">
 
-          <!-- 选择 Unit + 描述 -->
-          <template v-if="batchUnits.length">
-            <div class="space-y-3">
-              <div class="flex gap-2">
-                <select v-model="batchSelectedUnit"
-                  class="w-32 shrink-0 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
-                  <option v-for="u in batchUnits" :key="u" :value="u">{{ unitFolderToLabel(u) }}</option>
+            <!-- 选择 Unit -->
+            <div class="rounded-lg border border-gray-700 overflow-hidden">
+              <div class="px-4 py-2 bg-gray-800 text-xs text-gray-400">选择要导入的 Unit</div>
+              <div class="px-4 py-3 flex gap-2 items-center">
+                <select v-model="batchUnitNum" @change="onBatchUnitNumChange"
+                  class="w-32 bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
+                  <option v-for="n in 12" :key="n" :value="n">Unit {{ n }}</option>
                 </select>
-                <input v-model="batchUnitDesc" placeholder="Unit 描述（如 Cambridge 16）"
-                  class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" />
+                <input v-model="batchUnitDesc" placeholder="Unit 描述（如 Cambridge 16，可选）"
+                  class="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" />
               </div>
+            </div>
+
+            <!-- 无内容提示 -->
+            <div v-if="!batchPreview.length"
+                 class="text-center py-8 text-sm text-gray-500">
+              Unit {{ batchUnitNum }} 在 manifest 中暂无内容<br>
+              <span class="text-xs">（先把文件放入 public/data，然后运行 <code class="text-gray-300">npm run manifest</code> 再刷新）</span>
+            </div>
+
+            <template v-else>
 
               <!-- Part 描述 -->
               <div class="rounded-lg border border-gray-700 overflow-hidden">
-                <div class="px-3 py-2 bg-gray-800 text-xs text-gray-400">Part 描述（可选，留空则只显示 Part 1 / Part 2…）</div>
+                <div class="px-3 py-2 bg-gray-800 text-xs text-gray-400">Part 描述（可选）</div>
                 <div class="divide-y divide-gray-800">
-                  <div v-for="p in batchPartsInUnit" :key="p" class="flex items-center gap-3 px-3 py-2">
+                  <div v-for="p in batchPartsInPreview" :key="p" class="flex items-center gap-3 px-3 py-2">
                     <span class="text-sm text-gray-400 w-14 shrink-0">{{ partFolderToLabel(p) }}</span>
-                    <input v-model="batchPartDescs[p]" placeholder="描述（如 Listening Test 1）"
+                    <input v-model="batchPartDescs[p]" placeholder="如 Listening Test 1"
                       class="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-indigo-500" />
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!-- 预览表格 -->
-            <div class="rounded-lg border border-gray-700 overflow-hidden">
-              <div class="px-3 py-2 bg-gray-800 flex items-center justify-between">
-                <span class="text-xs text-gray-400">预览 — {{ batchFilteredExercises.length }} 条练习</span>
-                <span v-if="batchUnitDesc" class="text-xs text-indigo-400">
-                  {{ unitFolderToLabel(batchSelectedUnit) }} · {{ batchUnitDesc }}
-                </span>
+              <!-- 预览表格 -->
+              <div class="rounded-lg border border-gray-700 overflow-hidden">
+                <div class="px-3 py-2 bg-gray-800 flex items-center justify-between">
+                  <span class="text-xs text-gray-400">预览 — {{ batchPreview.length }} 条练习</span>
+                  <span v-if="batchUnitDesc" class="text-xs text-indigo-400">
+                    Unit {{ batchUnitNum }} · {{ batchUnitDesc }}
+                  </span>
+                </div>
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="bg-gray-800/50 text-gray-500">
+                      <th class="px-3 py-2 text-left font-normal">Part</th>
+                      <th class="px-3 py-2 text-left font-normal">Exercise</th>
+                      <th class="px-3 py-2 text-center font-normal">题目</th>
+                      <th class="px-3 py-2 text-center font-normal">答案</th>
+                      <th class="px-3 py-2 text-center font-normal">音频</th>
+                      <th class="px-3 py-2 text-center font-normal">原文</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-800">
+                    <tr v-for="ex in batchPreview" :key="`${ex.part}/${ex.exFolder}`"
+                        class="text-gray-300 hover:bg-gray-800/40 transition-colors">
+                      <td class="px-3 py-2 text-gray-500">{{ partFolderToLabel(ex.part) }}</td>
+                      <td class="px-3 py-2">{{ exFolderToTitle(ex.exFolder) }}</td>
+                      <td class="px-3 py-2 text-center">{{ ex.questionFiles.length }} 张</td>
+                      <td class="px-3 py-2 text-center">{{ ex.answerFiles.length }} 张</td>
+                      <td class="px-3 py-2 text-center">
+                        <span v-if="ex.audioFile" class="text-green-400">🔊</span>
+                        <span v-else class="text-gray-700">—</span>
+                      </td>
+                      <td class="px-3 py-2 text-center">
+                        <span v-if="ex.scriptFiles.length" class="text-blue-400">{{ ex.scriptFiles.length }} 张</span>
+                        <span v-else class="text-gray-700">—</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-              <table class="w-full text-xs">
-                <thead>
-                  <tr class="bg-gray-800/50 text-gray-500">
-                    <th class="px-3 py-2 text-left font-normal">Part</th>
-                    <th class="px-3 py-2 text-left font-normal">Exercise</th>
-                    <th class="px-3 py-2 text-center font-normal">题目</th>
-                    <th class="px-3 py-2 text-center font-normal">答案</th>
-                    <th class="px-3 py-2 text-center font-normal">音频</th>
-                    <th class="px-3 py-2 text-center font-normal">原文</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-800">
-                  <tr v-for="ex in batchFilteredExercises" :key="`${ex.part}/${ex.exFolder}`"
-                      class="text-gray-300 hover:bg-gray-800/40 transition-colors">
-                    <td class="px-3 py-2 text-gray-500">{{ partFolderToLabel(ex.part) }}</td>
-                    <td class="px-3 py-2">{{ exFolderToTitle(ex.exFolder) }}</td>
-                    <td class="px-3 py-2 text-center">{{ ex.questionFiles.length }} 张</td>
-                    <td class="px-3 py-2 text-center">{{ ex.answerFiles.length }} 张</td>
-                    <td class="px-3 py-2 text-center">
-                      <span v-if="ex.audioFile" class="text-green-400">🔊</span>
-                      <span v-else class="text-gray-700">—</span>
-                    </td>
-                    <td class="px-3 py-2 text-center">
-                      <span v-if="ex.scriptFiles.length" class="text-blue-400">{{ ex.scriptFiles.length }} 张</span>
-                      <span v-else class="text-gray-700">—</span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
 
-            <!-- 进度条 -->
-            <div v-if="isBatchImporting" class="space-y-2">
-              <div class="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                <div class="h-full bg-indigo-500 transition-all duration-300 rounded-full"
-                     :style="{ width: `${(batchProgress.done / batchProgress.total) * 100}%` }"></div>
+              <!-- 进度条 -->
+              <div v-if="isBatchImporting" class="space-y-2">
+                <div class="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                  <div class="h-full bg-indigo-500 transition-all duration-300 rounded-full"
+                       :style="{ width: `${(batchProgress.done / batchProgress.total) * 100}%` }"></div>
+                </div>
+                <p class="text-xs text-gray-400 text-center">{{ batchStatus }}</p>
               </div>
-              <p class="text-xs text-gray-400 text-center">{{ batchStatus }}</p>
-            </div>
-            <p v-else-if="batchStatus" class="text-sm text-center"
-               :class="batchStatusOk ? 'text-green-400' : 'text-red-400'">{{ batchStatus }}</p>
+              <p v-else-if="batchStatus" class="text-sm text-center"
+                 :class="batchStatusOk ? 'text-green-400' : 'text-red-400'">{{ batchStatus }}</p>
 
-            <!-- 导入按钮 -->
-            <button
-              class="w-full bg-indigo-600 hover:bg-indigo-500 rounded py-2.5 text-sm font-medium disabled:opacity-40 transition-colors"
-              :disabled="isBatchImporting || !batchFilteredExercises.length"
-              @click="startBatchImport">
-              {{ isBatchImporting
-                  ? `上传中… ${batchProgress.done}/${batchProgress.total}`
-                  : `上传并发布 ${batchFilteredExercises.length} 条练习` }}
-            </button>
+              <!-- 上传按钮 -->
+              <button
+                class="w-full bg-indigo-600 hover:bg-indigo-500 rounded py-2.5 text-sm font-medium disabled:opacity-40 transition-colors"
+                :disabled="isBatchImporting"
+                @click="startBatchImport">
+                {{ isBatchImporting
+                    ? `上传中… ${batchProgress.done}/${batchProgress.total}`
+                    : `上传并发布 Unit ${batchUnitNum} 的 ${batchPreview.length} 条练习` }}
+              </button>
+
+            </template>
           </template>
+
         </div>
 
       </div>

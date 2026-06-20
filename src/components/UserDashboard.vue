@@ -39,7 +39,9 @@ function selectExercise(unit, part, ex) {
   showScript.value   = false
   isPlaying.value    = false
   userAnswer.value   = ''
+  comments.value     = []
   if (window.innerWidth < 768) navOpen.value = false
+  fetchComments()
 }
 
 const currentExerciseList = computed(() => selectedPart.value?.exercises ?? [])
@@ -58,6 +60,55 @@ function closeZoom()   { zoomedImg.value = null }
 const userAnswer = ref('')
 const hasAudio   = computed(() => !!selectedEx.value?.audioSrc)
 const hasScript  = computed(() => toArray(selectedEx.value?.scriptImg).length > 0)
+
+// ── 评论 / 心得 ───────────────────────────────────────
+const comments         = ref([])
+const commentText      = ref('')
+const submitting       = ref(false)
+const commentsOpen     = ref(true)
+const commentsLoading  = ref(false)
+
+async function fetchComments() {
+  if (!selectedEx.value) return
+  const idx = currentExerciseList.value.indexOf(selectedEx.value)
+  commentsLoading.value = true
+  try {
+    const res = await fetch(
+      `/api/comments?unit=${encodeURIComponent(selectedUnit.value.title)}&part=${encodeURIComponent(selectedPart.value.title)}&exerciseIndex=${idx}`
+    )
+    comments.value = await res.json()
+  } finally {
+    commentsLoading.value = false
+  }
+}
+
+async function submitComment() {
+  if (!commentText.value.trim() || submitting.value || !selectedEx.value) return
+  submitting.value = true
+  const idx = currentExerciseList.value.indexOf(selectedEx.value)
+  try {
+    const res = await fetch('/api/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        unit:          selectedUnit.value.title,
+        part:          selectedPart.value.title,
+        exerciseIndex: idx,
+        text:          commentText.value.trim(),
+      }),
+    })
+    const comment = await res.json()
+    comments.value.push(comment)
+    commentText.value = ''
+  } finally {
+    submitting.value = false
+  }
+}
+
+function fmtDate(iso) {
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+}
 
 // ── 音频 ──────────────────────────────────────────────
 const audioEl     = ref(null)
@@ -147,7 +198,7 @@ function handleKey(e) {
     </aside>
 
     <!-- ── 主内容区 ── -->
-    <main class="flex-1 flex flex-col overflow-hidden">
+    <main class="flex-1 flex flex-col overflow-hidden min-w-0">
       <!-- 顶栏 -->
       <header class="flex items-center gap-3 px-4 py-3 border-b border-gray-700 shrink-0 bg-gray-900">
         <button class="text-gray-300 hover:text-white transition-colors text-lg leading-none" @click="navOpen = !navOpen">☰</button>
@@ -159,7 +210,16 @@ function handleKey(e) {
           </span>
           <span v-else class="text-gray-500">请从左侧选择练习</span>
         </div>
+        <button
+          class="text-gray-400 hover:text-white transition-colors text-sm px-2 py-1 rounded border border-gray-700 hover:border-gray-500 shrink-0"
+          :class="commentsOpen ? 'text-indigo-400 border-indigo-600' : ''"
+          @click="commentsOpen = !commentsOpen"
+          title="心得"
+        >心得</button>
       </header>
+
+      <!-- 内容 + 评论并排 -->
+      <div class="flex-1 flex overflow-hidden">
 
       <!-- 练习内容 -->
       <div class="flex-1 overflow-y-auto bg-gray-950">
@@ -237,6 +297,49 @@ function handleKey(e) {
           </template>
         </div>
       </div>
+
+      <!-- ── 右侧评论面板 ── -->
+      <aside
+        v-if="commentsOpen"
+        class="w-72 flex-shrink-0 flex flex-col border-l border-gray-700 bg-gray-900 overflow-hidden"
+      >
+        <div class="px-3 py-2.5 border-b border-gray-700 shrink-0">
+          <span class="text-sm font-medium text-gray-200">学习心得</span>
+          <span class="ml-2 text-xs text-gray-500">{{ comments.length ? `${comments.length} 条` : '' }}</span>
+        </div>
+
+        <!-- 心得列表 -->
+        <div class="flex-1 overflow-y-auto p-3 space-y-3">
+          <div v-if="commentsLoading" class="text-xs text-gray-400 text-center py-6">加载中…</div>
+          <div v-else-if="!selectedEx" class="text-xs text-gray-500 text-center py-6">选择练习后查看心得</div>
+          <div v-else-if="!comments.length" class="text-xs text-gray-500 text-center py-6">暂无心得，来写第一条吧 ✍</div>
+          <div
+            v-for="c in [...comments].reverse()" :key="c.id"
+            class="bg-gray-800 rounded-lg p-2.5 space-y-1.5"
+          >
+            <p class="text-sm text-gray-100 leading-relaxed whitespace-pre-wrap break-words">{{ c.text }}</p>
+            <p class="text-xs text-gray-500">{{ fmtDate(c.timestamp) }}</p>
+          </div>
+        </div>
+
+        <!-- 输入区 -->
+        <div class="p-3 border-t border-gray-700 shrink-0 space-y-2">
+          <textarea
+            v-model="commentText"
+            rows="3"
+            placeholder="写下你的心得…"
+            :disabled="!selectedEx || submitting"
+            class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 resize-none focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-40"
+          />
+          <button
+            @click="submitComment"
+            :disabled="!selectedEx || !commentText.trim() || submitting"
+            class="w-full py-1.5 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >{{ submitting ? '发布中…' : '发布心得' }}</button>
+        </div>
+      </aside>
+
+      </div><!-- end 内容+评论 flex 容器 -->
     </main>
 
     <!-- ── 图片放大 Lightbox ── -->

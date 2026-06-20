@@ -1,5 +1,9 @@
 // 扫描 public/data 目录结构，生成 public/data/manifest.json
-// 每次 npm run dev / npm run build 前自动执行
+// npm run dev 前自动执行；CI 环境跳过（使用已提交的 manifest.json）
+if (process.env.CI || process.env.CF_PAGES) {
+  console.log('[manifest] CI 环境，跳过生成，使用已提交的 manifest.json')
+  process.exit(0)
+}
 import { readdirSync, statSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 

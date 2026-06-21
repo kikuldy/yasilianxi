@@ -167,7 +167,6 @@ function handleKey(e) {
     >
       <div class="p-3 border-b border-gray-700 flex items-center justify-between shrink-0">
         <span class="text-sm font-medium text-gray-200">目录</span>
-        <a href="#/admin" class="text-xs text-indigo-400 hover:text-indigo-300">后台</a>
       </div>
       <div class="overflow-y-auto flex-1 py-2">
         <div v-if="loading" class="px-4 py-6 text-xs text-gray-400">加载中…</div>

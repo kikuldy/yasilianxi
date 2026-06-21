@@ -9,6 +9,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **数据层级：** Unit（单元）→ Part（部分）→ Exercise（练习），完全由 Cloudflare KV 数据驱动
 - **核心理念：** 纯图片 + 音频流。题目、答案、原文均为从 PDF 截取的图片，由 R2 托管；无需录入文本
 
+## 工作流约定
+
+每次完成代码修改后，**必须自动执行 commit 并 push**，无需等待用户提醒。
+
 ## 构建与开发命令
 
 ```bash
